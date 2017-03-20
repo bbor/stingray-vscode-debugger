@@ -14,18 +14,28 @@ import {basename} from 'path';
 
 
 /**
- * This interface should always match the schema found in the mock-debug extension manifest.
+ * This interface should always match the schema found in the stingray-debug extension manifest.
  */
 export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
-	/** An absolute path to the program to debug. */
-	program: string;
-	/** Automatically stop target after launch. If not specified, target does not stop. */
-	stopOnEntry?: boolean;
-	/** enable logging the Debug Adapter Protocol */
+	/** IP of the Stingray engine process to debug */
+	ip: string;
+	/** Port of the Stingray engine process to debug, usually 14030-14039 */
+	port: number;
+	/** Indicates if we should use the current toolchain to launch the engine and debug the current project.
+	 *  The value should be the path to the Stingray binary toolchain.
+	 */
+	tool_chain?: string;
+	/** Executable of the engine to debug, if the application needs to be launched before */
+	engine_exe?: string;
+	/** Directory of the project to be launched for debugging. */
+	project_source_dir?: string;
+	/** Additional argument fields to be used for debugging */
+	additional_args?: Array<string>;
+	/** Enable logging the Debug Adapter Protocol */
 	trace?: boolean;
 }
 
-class MockDebugSession extends LoggingDebugSession {
+class StingrayDebugSession extends LoggingDebugSession {
 
 	// we don't support multiple threads, so we can use a hardcoded ID for the default thread
 	private static THREAD_ID = 1;
@@ -55,12 +65,15 @@ class MockDebugSession extends LoggingDebugSession {
 
 	private _variableHandles = new Handles<string>();
 
+	// Engine web socket connection.
+	private _ws: WebSocket = null;
+
 	/**
 	 * Creates a new debug adapter that is used for one debug session.
 	 * We configure the default implementation of a debug adapter here.
 	 */
 	public constructor() {
-		super("mock-debug.txt");
+		super("stingray-debug.txt");
 
 		// this debugger uses zero-based lines and columns
 		this.setDebuggerLinesStartAt1(false);
@@ -96,7 +109,20 @@ class MockDebugSession extends LoggingDebugSession {
 			Logger.setup(Logger.LogLevel.Verbose, /*logToFile=*/false);
 		}
 
-		this._sourceFile = args.program;
+		// TODO: Launch engine if requested
+
+		// Establish web socket connection with engine.
+		var ip = args.ip;
+		var port = args.port;
+		this._ws = new WebSocket(`ws://${ip}:${port}`);
+
+		this._ws.binaryType = "arraybuffer";
+        this._ws.onopen = this.onEngineConnectionOpened.bind(this);
+        this._ws.onmessage = this.onEngineMessageReceived.bind(this);
+        this._ws.onclose = this.onEngineConnectionClosed.bind(this);
+        this._ws.onerror = this.onEngineConnectionError.bind(this);
+
+		/*this._sourceFile = args.program;
 		this._sourceLines = readFileSync(this._sourceFile).toString().split('\n');
 
 		if (args.stopOnEntry) {
@@ -104,11 +130,13 @@ class MockDebugSession extends LoggingDebugSession {
 			this.sendResponse(response);
 
 			// we stop on the first line
-			this.sendEvent(new StoppedEvent("entry", MockDebugSession.THREAD_ID));
+			this.sendEvent(new StoppedEvent("entry", StingrayDebugSession.THREAD_ID));
 		} else {
 			// we just start to run until we hit a breakpoint or an exception
-			this.continueRequest(<DebugProtocol.ContinueResponse>response, { threadId: MockDebugSession.THREAD_ID });
-		}
+			this.continueRequest(<DebugProtocol.ContinueResponse>response, { threadId: StingrayDebugSession.THREAD_ID });
+		}*/
+
+		this.continueRequest(<DebugProtocol.ContinueResponse>response, { threadId: StingrayDebugSession.THREAD_ID });
 	}
 
 	protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): void {
@@ -157,7 +185,7 @@ class MockDebugSession extends LoggingDebugSession {
 		// return the default thread
 		response.body = {
 			threads: [
-				new Thread(MockDebugSession.THREAD_ID, "thread 1")
+				new Thread(StingrayDebugSession.THREAD_ID, "thread 1")
 			]
 		};
 		this.sendResponse(response);
@@ -249,7 +277,7 @@ class MockDebugSession extends LoggingDebugSession {
 		}
 		this.sendResponse(response);
 		// no more lines: run to end
-		this.sendEvent(new TerminatedEvent());
+		//this.sendEvent(new TerminatedEvent());
 	}
 
 	protected reverseContinueRequest(response: DebugProtocol.ReverseContinueResponse, args: DebugProtocol.ReverseContinueArguments) : void {
@@ -262,7 +290,7 @@ class MockDebugSession extends LoggingDebugSession {
 		this.sendResponse(response);
 		// no more lines: stop at first line
 		this._currentLine = 0;
-		this.sendEvent(new StoppedEvent("entry", MockDebugSession.THREAD_ID));
+		this.sendEvent(new StoppedEvent("entry", StingrayDebugSession.THREAD_ID));
  	}
 
 	protected nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments): void {
@@ -287,7 +315,7 @@ class MockDebugSession extends LoggingDebugSession {
 		this.sendResponse(response);
 		// no more lines: stop at first line
 		this._currentLine = 0;
-		this.sendEvent(new StoppedEvent("entry", MockDebugSession.THREAD_ID));
+		this.sendEvent(new StoppedEvent("entry", StingrayDebugSession.THREAD_ID));
 	}
 
 	protected evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): void {
@@ -299,7 +327,29 @@ class MockDebugSession extends LoggingDebugSession {
 		this.sendResponse(response);
 	}
 
-	//---- some helpers
+	//---- Events
+
+	private onEngineConnectionOpened()
+	{
+
+	}
+
+	private onEngineConnectionClosed()
+	{
+
+	}
+
+	private onEngineMessageReceived()
+	{
+
+	}
+
+	private onEngineConnectionError()
+	{
+
+	}
+
+	//---- Implementation
 
 	/**
 	 * Fire StoppedEvent if line is not empty.
@@ -309,7 +359,7 @@ class MockDebugSession extends LoggingDebugSession {
 		if (this._sourceLines[ln].trim().length > 0) {	// non-empty line
 			this._currentLine = ln;
 			this.sendResponse(response);
-			this.sendEvent(new StoppedEvent("step", MockDebugSession.THREAD_ID));
+			this.sendEvent(new StoppedEvent("step", StingrayDebugSession.THREAD_ID));
 			return true;
 		}
 		return false;
@@ -331,7 +381,7 @@ class MockDebugSession extends LoggingDebugSession {
 				this.sendResponse(response);
 
 				// send 'stopped' event
-				this.sendEvent(new StoppedEvent("breakpoint", MockDebugSession.THREAD_ID));
+				this.sendEvent(new StoppedEvent("breakpoint", StingrayDebugSession.THREAD_ID));
 
 				// the following shows the use of 'breakpoint' events to update properties of a breakpoint in the UI
 				// if breakpoint is not yet verified, verify it now and send a 'breakpoint' update event
@@ -347,7 +397,7 @@ class MockDebugSession extends LoggingDebugSession {
 		if (this._sourceLines[ln].indexOf("exception") >= 0) {
 			this._currentLine = ln;
 			this.sendResponse(response);
-			this.sendEvent(new StoppedEvent("exception", MockDebugSession.THREAD_ID));
+			this.sendEvent(new StoppedEvent("exception", StingrayDebugSession.THREAD_ID));
 			this.log('exception in line', ln);
 			return true;
 		}
@@ -362,4 +412,4 @@ class MockDebugSession extends LoggingDebugSession {
 	}
 }
 
-DebugSession.run(MockDebugSession);
+DebugSession.run(StingrayDebugSession);

@@ -1,28 +1,25 @@
 {
-	"name": "mock-debug",
-	"displayName": "Mock Debug",
-	"version": "0.18.2",
-	"publisher": "andreweinand",
-	"description": "Starter extension for developing debug adapters for VS Code.",
+	"private": true,
+	"name": "stingray-debug",
+	"displayName": "Stingray Visual Studio Code Debugger Extension",
+	"version": "1.0.0",
+	"description": "Extension for developing the Stingray Debugger for VS Code.",
 	"author": {
-		"name": "Microsoft Corporation",
-		"email": "aweinand@microsoft.com"
+		"name": "Jonathan Schmidt",
+		"email": "jschmidt42@gmail.com"
 	},
+	"publisher": "jschmidt42",
 	"engines": {
 		"vscode": "^1.1.0",
 		"node": "^6.5.0"
 	},
-	"icon": "images/mock-debug-icon.svg",
+	"icon": "images/icon.svg",
 	"categories": [
 		"Debuggers"
 	],
-	"private": true,
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/Microsoft/vscode-mock-debug.git"
-	},
-	"bugs": {
-		"url": "https://github.com/Microsoft/vscode-mock-debug/issues"
+		"url": "https://github.com/jschmidt42/stingray-vscode-debugger.git"
 	},
 	"dependencies": {
 		"vscode-debugprotocol": "^1.18.0-pre.2",
@@ -42,41 +39,41 @@
 		"prepublish": "node ./node_modules/typescript/bin/tsc -p ./src",
 		"compile": "node ./node_modules/typescript/bin/tsc -p ./src",
 		"watch": "node ./node_modules/typescript/bin/tsc -w -p ./src",
-		"test": "node ./node_modules/mocha/bin/mocha -u tdd ./out/tests/",
 		"postinstall": "node ./node_modules/vscode/bin/install"
 	},
 	"main": "./out/extension",
 	"activationEvents": [
-		"onCommand:extension.mock-debug.getProgramName",
-		"onCommand:extension.mock-debug.provideInitialConfigurations"
+		"onCommand:extension.stingray-debug.getProgramName",
+		"onCommand:extension.stingray-debug.provideInitialConfigurations"
 	],
 	"contributes": {
 		"breakpoints": [
 			{
-				"language": "markdown"
+				"language": "lua"
 			}
 		],
 		"debuggers": [
 			{
-				"type": "mock",
-				"label": "Mock Debug",
+				"type": "stingray",
+				"label": "Stingray Debugger",
 
-				"program": "./out/mockDebug.js",
+				"program": "./out/stingray-debugger.js",
 				"runtime": "node",
 
 				"variables": {
-					"AskForProgramName": "extension.mock-debug.getProgramName"
+					"AskForProgramName": "extension.stingray-debug.getProgramName"
 				},
 
 				"configurationSnippets": [
 					{
-						"label": "Mock Debug: Launch",
-						"description": "A new configuration for launching a mock debug program",
+						"label": "Stingray: Debug",
+						"description": "A new configuration for debugging a Stingray program",
 						"body": {
-							"type": "mock",
+							"type": "stingray",
 							"request": "launch",
 							"name": "${2:Launch Program}",
-							"program": "^\"\\${workspaceRoot}/${1:Program}\""
+							"ip": "127.0.0.1",
+							"port": 14030
 						}
 					}
 				],
@@ -103,7 +100,7 @@
 						}
 					}
 				},
-				"initialConfigurations": "extension.mock-debug.provideInitialConfigurations"
+				"initialConfigurations": "extension.stingray-debug.provideInitialConfigurations"
 			}
 		]
 	}

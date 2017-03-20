@@ -18,33 +18,17 @@
 			"request": "launch",
 			"name": "Server",
 			"cwd": "${workspaceRoot}",
-			"program": "${workspaceRoot}/src/mockDebug.ts",
+			"program": "${workspaceRoot}/src/stingray-debugger.ts",
 			"args": [ "--server=4711" ],
 			"sourceMaps": true,
 			"outFiles": [ "${workspaceRoot}/out/**/*.js" ]
 		},
 		{
-			"type": "node",
+			"type": "stingray",
 			"request": "launch",
-			"name": "Tests",
-			"cwd": "${workspaceRoot}",
-			"program": "${workspaceRoot}/node_modules/mocha/bin/_mocha",
-			"args": [
-				"-u", "tdd",
-				"--timeout", "999999",
-				"--colors",
-				"./out/tests/"
-			],
-			"sourceMaps": true,
-			"outFiles": [ "${workspaceRoot}/out/**/*.js" ],
-			"internalConsoleOptions": "openOnSessionStart"
-		},
-		{
-			"type": "mock",
-			"request": "launch",
-			"name": "Mock Sample",
-			"program": "${workspaceRoot}/${command.AskForProgramName}",
-			"stopOnEntry": true
+			"name": "Stingray Editor",
+			"ip": "127.0.0.1",
+			"port": 14030
 		}
 	],
 	"compounds": [
