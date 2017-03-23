@@ -120,6 +120,7 @@ class StingrayDebugSession extends DebugSession {
 
         // Set supported features
         response.body.supportsEvaluateForHovers = true;
+        response.body.supportsConfigurationDoneRequest = true;
 
         this.sendResponse(response);
     }

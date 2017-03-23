@@ -21,7 +21,8 @@
     },
     "icon": "images/icon.png",
     "categories": [
-        "Debuggers"
+        "Debuggers",
+        "Languages"
     ],
     "repository": {
         "type": "git",
@@ -55,6 +56,50 @@
         "onCommand:extension.stingray-debug.provideInitialConfigurations"
     ],
     "contributes": {
+        "languages": [{
+            "id": "sjson",
+            "aliases": ["sjson", "sjson"],
+            "extensions": [
+                ".sjson",
+                ".material",
+                ".shader",
+                ".shader_node",
+                ".shader_source",
+                ".render_config",
+                ".particles",
+                ".bsi",
+                ".texture",
+                ".unit",
+                ".physics",
+                ".landscape",
+                ".level",
+                ".timpani_bank",
+                ".timpani_master",
+                ".mouse_cursor",
+                ".surface_properties",
+                ".physics_properties",
+                ".decals",
+                ".script_flow_nodes",
+                ".flow",
+                ".network_config",
+                ".strings",
+                ".volume_type",
+                ".package",
+                ".entity",
+                ".sound_environment",
+                ".texture_category",
+                ".stingray_project",
+                ".stingray_plugin",
+                ".plugin",
+                ".shading_environment_template",
+                ".shading_environment"],
+            "configuration": "./language-configuration.json"
+        }],
+        "grammars": [{
+            "language": "sjson",
+            "scopeName": "source.sjson",
+            "path": "./syntaxes/SJSON.tmLanguage"
+        }],
         "breakpoints": [
             {
                 "language": "lua"
