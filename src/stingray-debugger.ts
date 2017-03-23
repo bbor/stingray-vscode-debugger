@@ -7,7 +7,7 @@
 import {
     Logger,
     DebugSession, LoggingDebugSession,
-    InitializedEvent, TerminatedEvent, StoppedEvent, BreakpointEvent, OutputEvent, Event,
+    InitializedEvent, TerminatedEvent, StoppedEvent, BreakpointEvent, OutputEvent, ContinuedEvent, Event,
     Thread, StackFrame, Scope, Source, Handles, Breakpoint
 } from 'vscode-debugadapter';
 import {DebugProtocol} from 'vscode-debugprotocol';
@@ -43,11 +43,17 @@ function findFiles (startPath, filter, recurse = false, items = []) {
 /**
  * This interface should always match the schema found in the stingray-debug extension manifest.
  */
-export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
+export interface AttachRequestArguments extends DebugProtocol.LaunchRequestArguments {
     /** IP of the Stingray engine process to debug */
     ip?: string;
     /** Port of the Stingray engine process to debug, usually 14030-14039 */
     port?: number;
+}
+
+/**
+ * This interface should always match the schema found in the stingray-debug extension manifest.
+ */
+export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
     /** Stingray binary folder */
     toolchain?: string;
     /** Project settings file path */
@@ -91,6 +97,9 @@ class StingrayDebugSession extends DebugSession {
     // Engine web socket connection.
     private _conn: ConsoleConnection = null;
 
+    // Indicates the if the debug adapter is still initializing.
+    private _initializing: boolean = false;
+
     /**
      * Creates a new debug adapter that is used for one debug session.
      * We configure the default implementation of a debug adapter here.
@@ -109,25 +118,24 @@ class StingrayDebugSession extends DebugSession {
      */
     protected initializeRequest(response: DebugProtocol.InitializeResponse, args: DebugProtocol.InitializeRequestArguments): void {
 
-        // This debug adapter implements the configurationDoneRequest.
-        response.body.supportsConfigurationDoneRequest = true;
-
-        // Enable 'evaluate' when hovering over source
+        // Set supported features
         response.body.supportsEvaluateForHovers = true;
-
-        // Disable 'step back' button
-        response.body.supportsStepBack = false;
 
         this.sendResponse(response);
     }
 
     /**
-     * Establish and start a debugging session with the engine.
+     * Launch the engine and then attach to it.
      */
     protected launchRequest(response: DebugProtocol.LaunchResponse, args: LaunchRequestArguments): void {
-
         // TODO: Launch engine if requested
+        this.sendErrorResponse(response, 3000, "Not supported yet");
+    }
 
+    /**
+     * Attach to the engine console server using web sockets.
+     */
+    protected attachRequest(response: DebugProtocol.AttachResponse, args: AttachRequestArguments): void {
         // Establish web socket connection with engine.
         var ip = args.ip;
         var port = args.port;
@@ -238,48 +246,15 @@ class StingrayDebugSession extends DebugSession {
     }
 
     /**
-     * Returns the current engine stack.
-     *
-     *         Engine 'lua_debugger': {
-                "type":"lua_debugger",
-                "message":"callstack",
-                "stack":[
-                    {
-                        "source":"@core/editor_slave/stingray_editor/boot.lua",
-                        "function_start_line":94,
-                        "local":[
-                            {"value":"0.10011450201272964","type":"number","var_name":"dt"},
-                            {"value":"C function","type":"function","var_name":"(*temporary)"},
-                            {"value":"[unknown light userdata]","type":"userdata","var_name":"(*temporary)"},
-                            {"value":"
-                                _event_handlers       table: 000000007ED9C510\n
-                                _focused_viewport_id  \"dc78805b-cc3f-45c5-a4e1-c73a4caf6fa1\"\n
-                                _get_first_viewport_id  [function]\n
-                                _get_viewport_or_nil  [function]\n
-                                _is_quitting          false\n
-                                unregister_viewport_wwise_listener  [function]\n
-                                update                [function]\n
-                                update_viewport_camera_display_name  [function]\n
-                                viewport              [function]\n
-                                viewport_drop         [function]\n",
-                            "type":"table",
-                            "var_name":"(*temporary)"
-                            }
-                        ],
-                        "up_values":[],
-                        "line":95
-                    }
-                ]
-            }
+     * Returns the current engine callstack.
      */
     protected stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments): void {
 
-        if (!this._callstack) {
-            response.success = false;
-            response.message = "No callstack available";
-            this.sendResponse(response);
-            return;
-        }
+        if (this._initializing)
+            return this.sendResponse(response);
+
+        if (!this._callstack)
+            return this.sendErrorResponse(response, 1000, "No callstack available");
 
         let i = 0;
         let stack = this._callstack;
@@ -291,6 +266,8 @@ class StingrayDebugSession extends DebugSession {
             let name = frame.function ? `${frame.function} @ ${resourcePath}:${frame.line}` :
                                         `${resourcePath}:${frame.line}`;
             let filePath = this.getResourceFilePath(frame.source);
+            if (!fileExists(filePath))
+                return this.sendResponse(response);
 
             frames.push(new StackFrame(i++, `${name}(${i})`,
                 new Source(frame.source, filePath),
@@ -304,26 +281,29 @@ class StingrayDebugSession extends DebugSession {
         this.sendResponse(response);
     }
 
+    /**
+     * Return the local callstack values.
+     * TODO: Add global scope support
+     */
     protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments): void {
 
         if (!this._callstack)
-            throw new Error("No callstack available");
+            return this.sendErrorResponse(response, 1000, "No callstack available");
 
         const frameReference = args.frameId;
         const scopes = new Array<Scope>();
-        const localScope = new Scope("Local", frameReference + 1, false);
-        //const closureScope = new Scope("Closure", 1000, false);
-        // TODO: Add global scope
-        scopes.push(localScope);
-        //scopes.push(closureScope);
+        scopes.push(new Scope("Local", frameReference + 1, false));
 
         response.body = { scopes: scopes };
         this.sendResponse(response);
     }
 
+    /**
+     * Resolve request client stack values.
+     */
     protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): void {
         if (!this._callstack)
-            throw new Error("No callstack available");
+            return this.sendErrorResponse(response, 1000, "No callstack available");
 
         const scopeRef = args.variablesReference;
         let frameIndex = scopeRef - 1;
@@ -357,32 +337,41 @@ class StingrayDebugSession extends DebugSession {
 
     /**
      * Client request to continue debugging session.
+     * Tell the engine that it can now continue since we are attached.
      */
     protected continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments): void {
-        // Tell the engine that it can now continue since we are attached.
         this._conn.sendDebuggerCommand('continue');
-
-        // Conitnue client debugging session.
         this.sendResponse(response);
     }
 
+    /**
+     * Step over to the next statement.
+     */
     protected nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments): void {
         this._conn.sendDebuggerCommand('step_over');
         this.sendResponse(response);
     }
 
+    /**
+     * Step into the current call.
+     */
     protected stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments): void {
         this._conn.sendDebuggerCommand('step_into');
         this.sendResponse(response);
     }
 
+    /**
+     * Request the engine to step out of the current function.
+     */
     protected stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments): void {
         this._conn.sendDebuggerCommand('step_out');
         this.sendResponse(response);
     }
 
+    /**
+     * TODO
+     */
     protected evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): void {
-
         response.body = {
             result: `evaluate(context: '${args.context}', '${args.expression}')`,
             variablesReference: 0
@@ -391,10 +380,9 @@ class StingrayDebugSession extends DebugSession {
     }
 
     /**
-     * Not used, always reporting first thread.
+     * Not used, always reporting first same thread.
      */
     protected threadsRequest(response: DebugProtocol.ThreadsResponse): void {
-        // Return the default thread
         response.body = { threads: [ new Thread(StingrayDebugSession.THREAD_ID, "thread 1") ] };
         this.sendResponse(response);
     }
@@ -410,13 +398,8 @@ class StingrayDebugSession extends DebugSession {
         this._conn.onClose(this.onEngineConnectionClosed.bind(this));
 
         // Request engine status
+        this._initializing = true;
         this._conn.sendDebuggerCommand('report_status');
-
-        // Indicate that we are now initialized and that we are ready to set additional debugger states (i.e. breakpoints)
-        this.sendEvent(new InitializedEvent());
-
-        // Continue initialization request.
-        this.continueRequest(<DebugProtocol.ContinueResponse>response, { threadId: StingrayDebugSession.THREAD_ID });
     }
 
     /**
@@ -431,21 +414,29 @@ class StingrayDebugSession extends DebugSession {
         if (!e.message)
             return;
 
-        // Print debug message type
-        console.log(`Engine '${e.type}'\r\n${JSON.stringify(e, null, 2)}\r\n\r\n`, e, data);
-
         this.sendEvent(new OutputEvent(`Debugger status: ${e.message}`));
+
+        if (this._initializing) {
+            // Since we now know the state of the engine, lets proceed with the client initialization.
+            this.sendEvent(new InitializedEvent());
+            this._initializing = false;
+        }
 
         if (e.message === 'halted') {
             let line = e.line;
             let isMapped = e.source[0] === '@';
             let resourcePath = isMapped ? e.source.slice(1) : e.source;
-            if (!this._breakpoints.has(resourcePath))
-                return;
-            let bp = _.first(this._breakpoints.get(resourcePath).filter(bp => bp.line === line));
-            if (bp) {
-                bp.verified = true;
-                this.sendEvent(new BreakpointEvent("update", bp));
+            if (this._breakpoints.has(resourcePath)) {
+                let bp = _.first(this._breakpoints.get(resourcePath).filter(bp => bp.line === line));
+                if (bp) {
+                    bp.verified = true;
+                    this.sendEvent(new BreakpointEvent("update", bp));
+                }
+            } else {
+                // Unknown breakpoint, lets reset the engine state and continue.
+                this._conn.sendDebuggerCommand('set_breakpoints', {breakpoints: {}});
+                this._conn.sendDebuggerCommand('continue');
+                return this.sendEvent(new ContinuedEvent(StingrayDebugSession.THREAD_ID));
             }
         } else if (e.message === 'callstack') {
             this._callstack = e.stack;
@@ -465,15 +456,11 @@ class StingrayDebugSession extends DebugSession {
      * Connection with engine was aborted or the connection failed to be established.
      */
     private onEngineConnectionError(response: DebugProtocol.LaunchResponse) {
-        if (response) {
-            response.success = false;
-            response.message = `Engine connection failure with ${this._conn._ws.url}`;
-            this.sendResponse(response);
-        } else {
-            this.sendEvent(new TerminatedEvent());
-        }
-
-        this._conn.close();
+        if (response)
+            this.sendErrorResponse(response, 5656, `Engine connection failure with ${this._conn._ws.url}`);
+        this.sendEvent(new TerminatedEvent());
+        if (this._conn)
+            this._conn.close();
         this._conn = null;
     }
 

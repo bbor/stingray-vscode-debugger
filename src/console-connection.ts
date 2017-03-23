@@ -61,46 +61,23 @@ export class ConsoleConnection {
         this._ws.close();
     }
 
-    _onMessage (evt) {
-        if (this._onMessageCallbacks.length === 0)
-            return;
-
-        let message = null;
-        let binaryData = null;
-        if (_.isString(evt.data)) {
-            message = JSON.parse(evt.data);
-        } else if (evt.data instanceof ArrayBuffer) {
-            let bytes = new Uint8Array(evt.data);
-            let jsonLen = 0;
-            while (bytes[jsonLen++] !== 0)
-                ;
-            let jsonBytes = bytes.subarray(0, jsonLen - 1);
-            message = JSON.parse(Utf8ArrayToStr(jsonBytes));
-            binaryData = bytes.subarray(jsonLen);
-        }
-
-        for (let cb of this._onMessageCallbacks) {
-            cb(message, binaryData);
-        }
+    onOpen (callback) {
+        if (!this.isReady())
+            return this._addCallback(callback, this._onOpenCallbacks);
+        callback();
+        return _.noop;
     }
 
     onMessage (callback) {
-        this._onMessageCallbacks.push(callback);
-    }
-
-    onOpen (callback) {
-        if (this.isReady()) {
-            return callback();
-        }
-        this._onOpenCallbacks.push(callback);
+        return this._addCallback(callback, this._onMessageCallbacks);
     }
 
     onClose (callback) {
-        this._onCloseCallbacks.push(callback);
+        return this._addCallback(callback, this._onCloseCallbacks);
     }
 
     onError (callback) {
-        this._onErrorCallbacks.push(callback);
+        return this._addCallback(callback, this._onErrorCallbacks);
     }
 
     isReady () {
@@ -130,6 +107,16 @@ export class ConsoleConnection {
         }, data));
     }
 
+    _addCallback (cb, callbacks) {
+        callbacks.push(cb);
+        return () => {
+            for (var i = callbacks.length; i--;) {
+                if (callbacks[i] === cb)
+                    callbacks.splice(i, 1);
+            }
+        }
+    }
+
     _onOpen () {
         var that = this;
         _.each(this._onOpenCallbacks, function (cb) {
@@ -137,25 +124,41 @@ export class ConsoleConnection {
         });
     }
 
-    _onClose () {
-        var that = this;
-        _.each(this._onCloseCallbacks, function (cb) {
-            cb();
-        });
+    _onMessage (evt) {
+        if (this._onMessageCallbacks.length === 0)
+            return;
+
+        let message = null;
+        let binaryData = null;
+        if (_.isString(evt.data)) {
+            message = JSON.parse(evt.data);
+        } else if (evt.data instanceof ArrayBuffer) {
+            let bytes = new Uint8Array(evt.data);
+            let jsonLen = 0;
+            while (bytes[jsonLen++] !== 0)
+                ;
+            let jsonBytes = bytes.subarray(0, jsonLen - 1);
+            message = JSON.parse(Utf8ArrayToStr(jsonBytes));
+            binaryData = bytes.subarray(jsonLen);
+        }
+
+        for (let cb of this._onMessageCallbacks)
+            cb(message, binaryData);
     }
 
-    _onError () {
-        var that = this;
-        _.each(this._onErrorCallbacks, function (cb) {
-            cb();
-        });
+    _onClose (...args) {
+        for (let cb of this._onCloseCallbacks)
+            cb(...args);
+    }
+
+    _onError (...args) {
+        for (let cb of this._onErrorCallbacks)
+            cb(...args);
     }
 
     _send (data) {
-        if (this._ws === null || this._ws.readyState !== 1) {
+        if (this._ws === null || this._ws.readyState !== 1)
             return console.warn('Connection not ready');
-        }
-
         this._ws.send(JSON.stringify(data));
     }
 }

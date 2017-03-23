@@ -4,6 +4,7 @@
     "version": "0.10.13",
     "description": "Extension to debug Autodesk Stingray application and games.",
     "author": {
+        "url": "https://github.com/jschmidt42",
         "name": "Jonathan Schmidt",
         "email": "jschmidt42@gmail.com"
     },
@@ -28,7 +29,6 @@
     },
     "dependencies": {
         "ws": "^2.2.2",
-        "vscode": "^1.0.3",
         "lodash": "^4.17.4",
         "vscode-debugadapter": "^1.18.0-pre.4",
         "vscode-debugprotocol": "^1.18.0-pre.2"
@@ -40,7 +40,7 @@
         "@types/node": "^6.0.50",
         "typescript": "^2.0.10",
         "mocha": "^3.1.2",
-        "vscode": "^1.0.3",
+        "vscode": "^1.1.0",
         "vscode-debugadapter-testsupport": "^1.17.0"
     },
     "scripts": {
@@ -77,7 +77,7 @@
                             "type": "stingray",
                             "request": "launch",
                             "name": "${1:My application name}",
-                            "toolchain": "\"${2:path/to/stingray/installation}\"",
+                            "toolchain": "C:/path/to/stingray/binaries/installation",
                             "project_file": "^\"\\${workspaceRoot}/project.stingray_project\""
                         }
                     },
