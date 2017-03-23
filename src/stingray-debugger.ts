@@ -76,7 +76,7 @@ interface EngineMessage {
     stack?: object
 }
 
-class StingrayDebugSession extends LoggingDebugSession {
+class StingrayDebugSession extends DebugSession {
 
     // we don't support multiple threads, so we can use a hardcoded ID for the default thread
     private static THREAD_ID = 1;
@@ -105,7 +105,7 @@ class StingrayDebugSession extends LoggingDebugSession {
      * We configure the default implementation of a debug adapter here.
      */
     public constructor() {
-        super("stingray-debug.txt");
+        super();
 
         // This debugger uses one-based lines and columns
         this.setDebuggerLinesStartAt1(true);

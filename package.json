@@ -27,11 +27,11 @@
         "url": "https://github.com/jschmidt42/stingray-vscode-debugger.git"
     },
     "dependencies": {
+        "ws": "^2.2.2",
         "vscode": "^1.0.3",
         "lodash": "^4.17.4",
         "vscode-debugadapter": "^1.18.0-pre.4",
-        "vscode-debugprotocol": "^1.18.0-pre.2",
-        "ws": "^2.2.2"
+        "vscode-debugprotocol": "^1.18.0-pre.2"
     },
     "devDependencies": {
         "@types/es6-collections": "^0.5.29",
