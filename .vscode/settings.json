@@ -15,5 +15,12 @@
 		"**/out": true,
 		"**/node_modules": true,
 		"**/bower_components": true
+	},
+	"TodoParser": {
+		"exclude": [],
+		"include": [],
+		"folderExclude": ["node_modules", ".vscode"],
+		"markers": ["NOTE:", "REMINDER:"],
+		"autoDefaultMarkers": true
 	}
 }
