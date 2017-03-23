@@ -7,6 +7,12 @@ This extension allow you to set breakpoints in your Stingray lua applicaiton or 
 Stingray Editor lua editor slaves. When the engine breaks, you'll get all the engine lua
 callstack info and local variables previews.
 
+You can find more information about Stingray at the following links:
+
+- Stingray web site: <http://www.stingrayengine.com>
+- Stingray Learning Center: <http://help.autodesk.com/view/Stingray/ENU/>
+- Stingray SDK <http://help.autodesk.com/view/Stingray/ENU/?guid=__sdk_help_introduction_html>
+
 ## Installation
 
 Open VSCode extension manager and search for `Stingray Debugger`.
