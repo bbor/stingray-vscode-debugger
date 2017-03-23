@@ -22,8 +22,7 @@ function findFiles (startPath, filter, recurse = false, items = []) {
     items = items || [];
 
     if (!fs.existsSync(startPath)){
-        console.log("no dir ",startPath);
-        return;
+        return items;
     }
 
     var files=fs.readdirSync(startPath);
@@ -85,23 +84,6 @@ class StingrayDebugSession extends LoggingDebugSession {
     // since we want to send breakpoint events, we will assign an id to every event
     // so that the frontend can match events with breakpoints.
     private _breakpointId = 1000;
-
-    // This is the next line that will be 'executed'
-    private __currentLine = 0;
-    private get _currentLine() : number {
-        return this.__currentLine;
-    }
-    private set _currentLine(line: number) {
-        this.__currentLine = line;
-        this.log('line', line);
-    }
-
-    // the initial (and one and only) file we are 'debugging'
-    private _sourceFile: string;
-
-    // the contents (= lines) of the one and only file
-    private _sourceLines = new Array<string>();
-    private _variableHandles = new Handles<string>();
 
     // Indicate if we are in debug mode.
     private _debug: boolean;
@@ -241,7 +223,7 @@ class StingrayDebugSession extends LoggingDebugSession {
          * @typedef {object.<string, number[]>}
          * i.e.
          * {
-         *   "resource/name": [24, 42, 5542] <-- lines
+         *   "resource/name.lua": [24, 42, 5542] <-- lines
          * }
          */
 
@@ -321,14 +303,10 @@ class StingrayDebugSession extends LoggingDebugSession {
         for (let frame of stack) {
             let isMapped = frame.source[0] === '@';
             let resourcePath = isMapped ? frame.source.slice(1) : frame.source;
-            let name = `${frame.function} @ ${resourcePath}:${frame.line}`;
-            let filePath = this._roots["<project>"] ? path.join(this._roots["<project>"], resourcePath) : resourcePath;
-            if (isMapped && !fileExists(filePath)) {
-                let mapName = _.first(resourcePath.split('/'));
-                if (mapName && this._roots[mapName]) {
-                    filePath = path.join(this._roots[mapName], resourcePath);
-                }
-            }
+            // TODO: read and parse lua at line of function start.
+            let name = frame.function ? `${frame.function} @ ${resourcePath}:${frame.line}` :
+                                        `${resourcePath}:${frame.line}`;
+            let filePath = this.getResourceFilePath(frame.source);
 
             frames.push(new StackFrame(i++, `${name}(${i})`,
                 new Source(frame.source, filePath),
@@ -344,46 +322,46 @@ class StingrayDebugSession extends LoggingDebugSession {
 
     protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments): void {
 
+        if (!this._callstack)
+            throw new Error("No callstack available");
+
         const frameReference = args.frameId;
         const scopes = new Array<Scope>();
-        scopes.push(new Scope("Local", this._variableHandles.create("local_" + frameReference), false));
-        scopes.push(new Scope("Closure", this._variableHandles.create("closure_" + frameReference), false));
-        scopes.push(new Scope("Global", this._variableHandles.create("global_" + frameReference), true));
+        const localScope = new Scope("Local", frameReference + 1, false);
+        //const closureScope = new Scope("Closure", 1000, false);
+        // TODO: Add global scope
+        scopes.push(localScope);
+        //scopes.push(closureScope);
 
-        response.body = {
-            scopes: scopes
-        };
+        response.body = { scopes: scopes };
         this.sendResponse(response);
     }
 
     protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): void {
+        if (!this._callstack)
+            throw new Error("No callstack available");
 
+        const scopeRef = args.variablesReference;
+        let frameIndex = scopeRef - 1;
+        const frameValues = this._callstack[frameIndex]["local"].concat(this._callstack[frameIndex]["up_values"]);
         const variables = [];
-        const id = this._variableHandles.get(args.variablesReference);
-        if (id != null) {
+        for (let fv of frameValues) {
+            if (fv.var_name === "(*temporary)")
+                continue;
+            if (fv.value === "C function")
+                continue;
+            let varName = `${fv.var_name} (${fv.type})`;
+            let value = fv.value;
+            let type = fv.type;
+            if (fv.type === 'table') {
+                //type = 'object';
+                //value = value.split('\n');
+            }
             variables.push({
-                name: id + "_i",
-                type: "integer",
-                value: "123",
+                name: varName,
+                type: type,
+                value: value,
                 variablesReference: 0
-            });
-            variables.push({
-                name: id + "_f",
-                type: "float",
-                value: "3.14",
-                variablesReference: 0
-            });
-            variables.push({
-                name: id + "_s",
-                type: "string",
-                value: "hello world",
-                variablesReference: 0
-            });
-            variables.push({
-                name: id + "_o",
-                type: "object",
-                value: "Object",
-                variablesReference: this._variableHandles.create("object_")
             });
         }
 
@@ -517,50 +495,18 @@ class StingrayDebugSession extends LoggingDebugSession {
 
     //---- Implementation
 
-    /**
-     * Fire StoppedEvent if line has a breakpoint or the word 'exception' is found.
-     */
-    private fireEventsForLine(response: DebugProtocol.Response, ln: number): boolean {
-
-        // find the breakpoints for the current source file
-        const breakpoints = this._breakpoints.get(this._sourceFile);
-        if (breakpoints) {
-            const bps = breakpoints.filter(bp => bp.line === this.convertDebuggerLineToClient(ln));
-            if (bps.length > 0) {
-                this._currentLine = ln;
-
-                // 'continue' request finished
-                this.sendResponse(response);
-
-                // send 'stopped' event
-                this.sendEvent(new StoppedEvent("breakpoint", StingrayDebugSession.THREAD_ID));
-
-                // the following shows the use of 'breakpoint' events to update properties of a breakpoint in the UI
-                // if breakpoint is not yet verified, verify it now and send a 'breakpoint' update event
-                if (!bps[0].verified) {
-                    bps[0].verified = true;
-                    this.sendEvent(new BreakpointEvent("update", bps[0]));
-                }
-                return true;
+    private getResourceFilePath (source) {
+        let isMapped = source[0] === '@';
+        let resourcePath = isMapped ? source.slice(1) : source;
+        let filePath = this._roots["<project>"] ? path.join(this._roots["<project>"], resourcePath) : resourcePath;
+        if (isMapped && !fileExists(filePath)) {
+            let mapName = _.first(resourcePath.split('/'));
+            if (mapName && this._roots[mapName]) {
+                filePath = path.join(this._roots[mapName], resourcePath);
             }
         }
 
-        // if word 'exception' found in source -> throw exception
-        if (this._sourceLines[ln].indexOf("exception") >= 0) {
-            this._currentLine = ln;
-            this.sendResponse(response);
-            this.sendEvent(new StoppedEvent("exception", StingrayDebugSession.THREAD_ID));
-            this.log('exception in line', ln);
-            return true;
-        }
-
-        return false;
-    }
-
-    private log(msg: string, line: number) {
-        const e = new OutputEvent(`${msg}: ${line}\n`);
-        (<DebugProtocol.OutputEvent>e).body.variablesReference = this._variableHandles.create("args");
-        this.sendEvent(e);	// print current line on debug console
+        return filePath;
     }
 }
 
