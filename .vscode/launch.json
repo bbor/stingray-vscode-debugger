@@ -22,13 +22,6 @@
 			"args": [ "--server=4711" ],
 			"sourceMaps": true,
 			"outFiles": [ "${workspaceRoot}/out/**/*.js" ]
-		},
-		{
-			"type": "stingray",
-			"request": "launch",
-			"name": "Stingray Editor",
-			"ip": "127.0.0.1",
-			"port": 14030
 		}
 	],
 	"compounds": [

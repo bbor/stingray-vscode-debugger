@@ -450,7 +450,7 @@ class StingrayDebugSession extends LoggingDebugSession {
         if (!e.message)
             return;
 
-        this.sendEvent(new OutputEvent(`Debugger status: ${e.message}`));
+        //this.sendEvent(new OutputEvent(`Debugger status: ${e.message}`));
 
         if (e.message === 'halted') {
             let line = e.line;

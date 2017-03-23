@@ -1,7 +1,7 @@
 {
     "name": "stingray-debug",
     "displayName": "Stingray Debugger",
-    "version": "0.10.3",
+    "version": "0.10.13",
     "description": "Extension to debug Autodesk Stingray application and games.",
     "author": {
         "name": "Jonathan Schmidt",
@@ -27,6 +27,7 @@
         "url": "https://github.com/jschmidt42/stingray-vscode-debugger.git"
     },
     "dependencies": {
+        "vscode": "^1.0.3",
         "lodash": "^4.17.4",
         "vscode-debugadapter": "^1.18.0-pre.4",
         "vscode-debugprotocol": "^1.18.0-pre.2",
@@ -100,7 +101,7 @@
                             "trace": {
                                 "type": "boolean",
                                 "description": "Enable logging of the Debug Adapter Protocol.",
-                                "default": false
+                                "default": true
                             }
                         }
                     }
