@@ -53,7 +53,7 @@ It is also possible to have a launch configuration that starts the Stingray engi
 
 To do so, you can add the follow launch configuration:
 
-```json
+```javascript
 {
 	"type": "stingray",
 	"request": "launch",
