@@ -45,21 +45,15 @@ function findFiles (startPath, filter, recurse = false, items = []) {
  */
 export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
     /** IP of the Stingray engine process to debug */
-    ip: string;
+    ip?: string;
     /** Port of the Stingray engine process to debug, usually 14030-14039 */
-    port: number;
-    /** Indicates if we should use the current toolchain to launch the engine and debug the current project.
-     *  The value should be the path to the Stingray binary toolchain.
-     */
-    tool_chain?: string;
-    /** Executable of the engine to debug, if the application needs to be launched before */
-    engine_exe?: string;
-    /** Directory of the project to be launched for debugging. */
-    project_source_dir?: string;
+    port?: number;
+    /** Stingray binary folder */
+    toolchain?: string;
+    /** Project settings file path */
+    project_file?: string;
     /** Additional argument fields to be used for debugging */
-    additional_args?: Array<string>;
-    /** Enable logging the Debug Adapter Protocol */
-    trace?: boolean;
+    command_line_args?: Array<string>;
 }
 
 /**
@@ -84,9 +78,6 @@ class StingrayDebugSession extends DebugSession {
     // since we want to send breakpoint events, we will assign an id to every event
     // so that the frontend can match events with breakpoints.
     private _breakpointId = 1000;
-
-    // Indicate if we are in debug mode.
-    private _debug: boolean;
 
     // Maps from sourceFile to array of Breakpoints
     private _breakpoints = new Map<string, DebugProtocol.Breakpoint[]>();
@@ -134,12 +125,6 @@ class StingrayDebugSession extends DebugSession {
      * Establish and start a debugging session with the engine.
      */
     protected launchRequest(response: DebugProtocol.LaunchResponse, args: LaunchRequestArguments): void {
-
-        if (args.trace) {
-            Logger.setup(Logger.LogLevel.Verbose, /*logToFile=*/false);
-        }
-
-        this._debug = args.trace;
 
         // TODO: Launch engine if requested
 
@@ -219,14 +204,6 @@ class StingrayDebugSession extends DebugSession {
         // Normalize path
         let resourceName = resourcePath.replace(/\\/g, '/');
 
-        /**
-         * @typedef {object.<string, number[]>}
-         * i.e.
-         * {
-         *   "resource/name.lua": [24, 42, 5542] <-- lines
-         * }
-         */
-
         // Verify breakpoint locations
         var breakpoints = new Array<Breakpoint>();
         for (var i = 0; i < clientLines.length; i++) {
@@ -241,6 +218,13 @@ class StingrayDebugSession extends DebugSession {
         this._breakpoints.set(resourceName, validScript ? breakpoints : []);
 
         // Set engine breakpoints
+        /**
+         * @typedef {object.<string, number[]>}
+         * i.e.
+         * {
+         *   "resource/name.lua": [24, 42, 5542] <-- lines
+         * }
+         */
         let engineBreakpoints = {};
         this._breakpoints.forEach((v, k) => {
             if (!_.isEmpty(v))
@@ -444,13 +428,13 @@ class StingrayDebugSession extends DebugSession {
         if (e.type !== 'lua_debugger')
             return;
 
-        // Print debug message type
-        console.log(`Engine '${e.type}'\r\n${JSON.stringify(e, null, 2)}\r\n\r\n`, e, data);
-
         if (!e.message)
             return;
 
-        //this.sendEvent(new OutputEvent(`Debugger status: ${e.message}`));
+        // Print debug message type
+        console.log(`Engine '${e.type}'\r\n${JSON.stringify(e, null, 2)}\r\n\r\n`, e, data);
+
+        this.sendEvent(new OutputEvent(`Debugger status: ${e.message}`));
 
         if (e.message === 'halted') {
             let line = e.line;
