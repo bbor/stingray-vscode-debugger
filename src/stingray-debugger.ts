@@ -1,6 +1,8 @@
 /**
  * Stingray Visual Studio Code Debugger
  * NOTE: Debugging protocal interfaces: https://github.com/Microsoft/vscode-debugadapter-node/blob/master/protocol/src/debugProtocol.ts
+ *
+ * FIXME: Close debug session when engine is killed or closed.
  */
 import {
     Logger,
@@ -9,9 +11,35 @@ import {
     Thread, StackFrame, Scope, Source, Handles, Breakpoint
 } from 'vscode-debugadapter';
 import {DebugProtocol} from 'vscode-debugprotocol';
-import {readFileSync} from 'fs';
-import {basename} from 'path';
+import _ = require('lodash');
+import {readFileSync, existsSync as fileExists} from 'fs';
+import * as fs from 'fs';
+import * as path from 'path';
 import {ConsoleConnection} from './console-connection';
+
+function findFiles (startPath, filter, recurse = false, items = []) {
+
+    items = items || [];
+
+    if (!fs.existsSync(startPath)){
+        console.log("no dir ",startPath);
+        return;
+    }
+
+    var files=fs.readdirSync(startPath);
+    for(var i=0;i<files.length;i++) {
+        var filename=path.join(startPath,files[i]);
+        var stat = fs.lstatSync(filename);
+        if (stat.isDirectory()) {
+            if (recurse) {
+                findFiles(filename, filter, recurse, items);
+            }
+        } else if (filename.indexOf(filter)>=0)
+            items.push(filename);
+    };
+
+    return items;
+};
 
 /**
  * This interface should always match the schema found in the stingray-debug extension manifest.
@@ -39,9 +67,14 @@ export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArgum
  * Engine debug message.
  * These are usually sent from the engine debugger.
  */
-interface DebugMessage {
+interface EngineMessage {
     type: string,
-    message: string
+    message: string,
+
+    // halted
+    line?: number,
+    source?: string,
+    stack?: object
 }
 
 class StingrayDebugSession extends LoggingDebugSession {
@@ -68,11 +101,19 @@ class StingrayDebugSession extends LoggingDebugSession {
 
     // the contents (= lines) of the one and only file
     private _sourceLines = new Array<string>();
-
-    // maps from sourceFile to array of Breakpoints
-    private _breakPoints = new Map<string, DebugProtocol.Breakpoint[]>();
-
     private _variableHandles = new Handles<string>();
+
+    // Indicate if we are in debug mode.
+    private _debug: boolean;
+
+    // Maps from sourceFile to array of Breakpoints
+    private _breakpoints = new Map<string, DebugProtocol.Breakpoint[]>();
+
+    // Last call stack when the engine breaks.
+    private _callstack: any = null;
+
+    // Cached source roots.
+    private _roots = {};
 
     // Engine web socket connection.
     private _conn: ConsoleConnection = null;
@@ -84,9 +125,9 @@ class StingrayDebugSession extends LoggingDebugSession {
     public constructor() {
         super("stingray-debug.txt");
 
-        // this debugger uses zero-based lines and columns
-        this.setDebuggerLinesStartAt1(false);
-        this.setDebuggerColumnsStartAt1(false);
+        // This debugger uses one-based lines and columns
+        this.setDebuggerLinesStartAt1(true);
+        this.setDebuggerColumnsStartAt1(true);
     }
 
     /**
@@ -116,6 +157,8 @@ class StingrayDebugSession extends LoggingDebugSession {
             Logger.setup(Logger.LogLevel.Verbose, /*logToFile=*/false);
         }
 
+        this._debug = args.trace;
+
         // TODO: Launch engine if requested
 
         // Establish web socket connection with engine.
@@ -141,80 +184,160 @@ class StingrayDebugSession extends LoggingDebugSession {
         this.sendResponse(response);
     }
 
-    protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): void {
-
-        var path = args.source.path;
-        var clientLines = args.lines;
-
-        // read file contents into array for direct access
-        var lines = readFileSync(path).toString().split('\n');
-
-        var breakpoints = new Array<Breakpoint>();
-
-        // verify breakpoint locations
-        for (var i = 0; i < clientLines.length; i++) {
-            var l = this.convertClientLineToDebugger(clientLines[i]);
-            var verified = false;
-            if (l < lines.length) {
-                const line = lines[l].trim();
-                // if a line is empty or starts with '+' we don't allow to set a breakpoint but move the breakpoint down
-                if (line.length == 0 || line.indexOf("+") == 0)
-                    l++;
-                // if a line starts with '-' we don't allow to set a breakpoint but move the breakpoint up
-                if (line.indexOf("-") == 0)
-                    l--;
-                // don't set 'verified' to true if the line contains the word 'lazy'
-                // in this case the breakpoint will be verified 'lazy' after hitting it once.
-                if (line.indexOf("lazy") < 0) {
-                    verified = true;    // this breakpoint has been validated
-                }
-            }
-            const bp = <DebugProtocol.Breakpoint> new Breakpoint(verified, this.convertDebuggerLineToClient(l));
-            bp.id = this._breakpointId++;
-            breakpoints.push(bp);
-        }
-        this._breakPoints.set(path, breakpoints);
-
-        // send back the actual breakpoint positions
-        response.body = {
-            breakpoints: breakpoints
-        };
+    /**
+     * Client broke the debug session.
+     */
+    protected pauseRequest(response: DebugProtocol.PauseResponse, args: DebugProtocol.PauseArguments): void {
+        this._conn.sendDebuggerCommand('break');
         this.sendResponse(response);
     }
 
-    protected threadsRequest(response: DebugProtocol.ThreadsResponse): void {
-
-        // return the default thread
-        response.body = {
-            threads: [
-                new Thread(StingrayDebugSession.THREAD_ID, "thread 1")
-            ]
-        };
+    protected sourceRequest(response: DebugProtocol.SourceResponse, args: DebugProtocol.SourceArguments): void {
         this.sendResponse(response);
     }
 
     /**
-     * Returns a fake 'stacktrace' where every 'stackframe' is a word from the current line.
+     * Handle client breakpoints.
+     */
+    protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): void {
+
+        let filePath = args.source.path;
+        let clientLines = args.lines;
+        let validScript = true;
+
+        // Find resource root looking for settings.ini or .stingray-asset-server-directory
+        let resourcePath = filePath;
+        let dirPath = path.dirname(filePath);
+        while (true) {
+
+            // Check that we have a valid script folder or that we did not reach the drive root.
+            if (!dirPath || dirPath === filePath || dirPath === '.') {
+                validScript = false;
+                break;
+            }
+
+            let projectFilePath = _.first(findFiles(dirPath, '.stingray_project'));
+            if (projectFilePath && fileExists(projectFilePath)) {
+                resourcePath = path.relative(dirPath, filePath);
+                this._roots["<project>"] = dirPath;
+                break;
+            }
+
+            let stingrayDirTokenFilePath = path.join(dirPath, '.stingray-asset-server-directory');
+            if (fileExists(stingrayDirTokenFilePath)) {
+                let mapName = path.basename(dirPath);
+                resourcePath = path.join(mapName, path.relative(dirPath, filePath));
+                this._roots[mapName] = path.dirname(dirPath);
+                break;
+            }
+
+            dirPath = path.dirname(dirPath);
+        }
+
+        // Normalize path
+        let resourceName = resourcePath.replace(/\\/g, '/');
+
+        /**
+         * @typedef {object.<string, number[]>}
+         * i.e.
+         * {
+         *   "resource/name": [24, 42, 5542] <-- lines
+         * }
+         */
+
+        // Verify breakpoint locations
+        var breakpoints = new Array<Breakpoint>();
+        for (var i = 0; i < clientLines.length; i++) {
+            let l = clientLines[i];
+            let breakpointId = this._breakpointId++;
+            const bp = <DebugProtocol.Breakpoint> new Breakpoint(validScript, l, 0, new Source(resourceName, filePath));
+            bp.id = breakpointId;
+            breakpoints.push(bp);
+        }
+
+        // Store session breakpoints
+        this._breakpoints.set(resourceName, validScript ? breakpoints : []);
+
+        // Set engine breakpoints
+        let engineBreakpoints = {};
+        this._breakpoints.forEach((v, k) => {
+            if (!_.isEmpty(v))
+                engineBreakpoints[k] = v.map(bp => bp.line);
+        });
+        this._conn.sendDebuggerCommand('set_breakpoints', {breakpoints: engineBreakpoints});
+
+        // Response with actual breakpoints
+        response.body = { breakpoints: breakpoints };
+        this.sendResponse(response);
+    }
+
+    /**
+     * Returns the current engine stack.
+     *
+     *         Engine 'lua_debugger': {
+                "type":"lua_debugger",
+                "message":"callstack",
+                "stack":[
+                    {
+                        "source":"@core/editor_slave/stingray_editor/boot.lua",
+                        "function_start_line":94,
+                        "local":[
+                            {"value":"0.10011450201272964","type":"number","var_name":"dt"},
+                            {"value":"C function","type":"function","var_name":"(*temporary)"},
+                            {"value":"[unknown light userdata]","type":"userdata","var_name":"(*temporary)"},
+                            {"value":"
+                                _event_handlers       table: 000000007ED9C510\n
+                                _focused_viewport_id  \"dc78805b-cc3f-45c5-a4e1-c73a4caf6fa1\"\n
+                                _get_first_viewport_id  [function]\n
+                                _get_viewport_or_nil  [function]\n
+                                _is_quitting          false\n
+                                unregister_viewport_wwise_listener  [function]\n
+                                update                [function]\n
+                                update_viewport_camera_display_name  [function]\n
+                                viewport              [function]\n
+                                viewport_drop         [function]\n",
+                            "type":"table",
+                            "var_name":"(*temporary)"
+                            }
+                        ],
+                        "up_values":[],
+                        "line":95
+                    }
+                ]
+            }
      */
     protected stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments): void {
 
-        const words = this._sourceLines[this._currentLine].trim().split(/\s+/);
+        if (!this._callstack) {
+            response.success = false;
+            response.message = "No callstack available";
+            this.sendResponse(response);
+            return;
+        }
 
-        const startFrame = typeof args.startFrame === 'number' ? args.startFrame : 0;
-        const maxLevels = typeof args.levels === 'number' ? args.levels : words.length-startFrame;
-        const endFrame = Math.min(startFrame + maxLevels, words.length);
-
+        let i = 0;
+        let stack = this._callstack;
         const frames = new Array<StackFrame>();
-        // every word of the current line becomes a stack frame.
-        for (let i= startFrame; i < endFrame; i++) {
-            const name = words[i];	// use a word of the line as the stackframe name
-            frames.push(new StackFrame(i, `${name}(${i})`, new Source(basename(this._sourceFile),
-                this.convertDebuggerPathToClient(this._sourceFile)),
-                this.convertDebuggerLineToClient(this._currentLine), 0));
+        for (let frame of stack) {
+            let isMapped = frame.source[0] === '@';
+            let resourcePath = isMapped ? frame.source.slice(1) : frame.source;
+            let name = `${frame.function} @ ${resourcePath}:${frame.line}`;
+            let filePath = this._roots["<project>"] ? path.join(this._roots["<project>"], resourcePath) : resourcePath;
+            if (isMapped && !fileExists(filePath)) {
+                let mapName = _.first(resourcePath.split('/'));
+                if (mapName && this._roots[mapName]) {
+                    filePath = path.join(this._roots[mapName], resourcePath);
+                }
+            }
+
+            frames.push(new StackFrame(i++, `${name}(${i})`,
+                new Source(frame.source, filePath),
+                frame.line, 0
+            ));
         }
         response.body = {
             stackFrames: frames,
-            totalFrames: words.length
+            totalFrames: frames.length
         };
         this.sendResponse(response);
     }
@@ -270,53 +393,30 @@ class StingrayDebugSession extends LoggingDebugSession {
         this.sendResponse(response);
     }
 
+    /**
+     * Client request to continue debugging session.
+     */
     protected continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments): void {
         // Tell the engine that it can now continue since we are attached.
         this._conn.sendDebuggerCommand('continue');
 
         // Conitnue client debugging session.
         this.sendResponse(response);
-
-        // no more lines: run to end
-        //this.sendEvent(new TerminatedEvent());
-    }
-
-    protected reverseContinueRequest(response: DebugProtocol.ReverseContinueResponse, args: DebugProtocol.ReverseContinueArguments) : void {
-
-        for (var ln = this._currentLine-1; ln >= 0; ln--) {
-            if (this.fireEventsForLine(response, ln)) {
-                return;
-            }
-        }
-        this.sendResponse(response);
-        // no more lines: stop at first line
-        this._currentLine = 0;
-        this.sendEvent(new StoppedEvent("entry", StingrayDebugSession.THREAD_ID));
     }
 
     protected nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments): void {
-
-        for (let ln = this._currentLine+1; ln < this._sourceLines.length; ln++) {
-            if (this.fireStepEvent(response, ln)) {
-                return;
-            }
-        }
+        this._conn.sendDebuggerCommand('step_over');
         this.sendResponse(response);
-        // no more lines: run to end
-        this.sendEvent(new TerminatedEvent());
     }
 
-    protected stepBackRequest(response: DebugProtocol.StepBackResponse, args: DebugProtocol.StepBackArguments): void {
-
-        for (let ln = this._currentLine-1; ln >= 0; ln--) {
-            if (this.fireStepEvent(response, ln)) {
-                return;
-            }
-        }
+    protected stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments): void {
+        this._conn.sendDebuggerCommand('step_into');
         this.sendResponse(response);
-        // no more lines: stop at first line
-        this._currentLine = 0;
-        this.sendEvent(new StoppedEvent("entry", StingrayDebugSession.THREAD_ID));
+    }
+
+    protected stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments): void {
+        this._conn.sendDebuggerCommand('step_out');
+        this.sendResponse(response);
     }
 
     protected evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): void {
@@ -328,14 +428,26 @@ class StingrayDebugSession extends LoggingDebugSession {
         this.sendResponse(response);
     }
 
+    /**
+     * Not used, always reporting first thread.
+     */
+    protected threadsRequest(response: DebugProtocol.ThreadsResponse): void {
+        // Return the default thread
+        response.body = { threads: [ new Thread(StingrayDebugSession.THREAD_ID, "thread 1") ] };
+        this.sendResponse(response);
+    }
+
     //---- Events
 
-    private onEngineConnectionOpened(response: DebugProtocol.LaunchResponse)
-    {
+    /**
+     * Called when the engine debugger session is established.
+     */
+    private onEngineConnectionOpened(response: DebugProtocol.LaunchResponse) {
         // Bind additional connection messages.
         this._conn.onMessage(this.onEngineMessageReceived.bind(this));
         this._conn.onClose(this.onEngineConnectionClosed.bind(this));
 
+        // Request engine status
         this._conn.sendDebuggerCommand('report_status');
 
         // Indicate that we are now initialized and that we are ready to set additional debugger states (i.e. breakpoints)
@@ -345,43 +457,65 @@ class StingrayDebugSession extends LoggingDebugSession {
         this.continueRequest(<DebugProtocol.ContinueResponse>response, { threadId: StingrayDebugSession.THREAD_ID });
     }
 
-    private onEngineMessageReceived(dm: DebugMessage, data: object = null)
-    {
-        console.log(`${dm.type} message ${dm.message}`, arguments[1], arguments[2]);
-        if (dm.type === 'lua_debugger') {
-            const e = new OutputEvent(`Debugger status: ${dm.message}`);
-            this.sendEvent(e);
+    /**
+     * Called when an engine message is received.
+     * @param {EngineMessage} dm - Engine debugging message
+     * @param {ArrayBuffer} data - Message binary data
+     */
+    private onEngineMessageReceived(e: EngineMessage, data: ArrayBuffer = null) {
+        if (e.type !== 'lua_debugger')
+            return;
+
+        // Print debug message type
+        console.log(`Engine '${e.type}'\r\n${JSON.stringify(e, null, 2)}\r\n\r\n`, e, data);
+
+        if (!e.message)
+            return;
+
+        this.sendEvent(new OutputEvent(`Debugger status: ${e.message}`));
+
+        if (e.message === 'halted') {
+            let line = e.line;
+            let isMapped = e.source[0] === '@';
+            let resourcePath = isMapped ? e.source.slice(1) : e.source;
+            if (!this._breakpoints.has(resourcePath))
+                return;
+            let bp = _.first(this._breakpoints.get(resourcePath).filter(bp => bp.line === line));
+            if (bp) {
+                bp.verified = true;
+                this.sendEvent(new BreakpointEvent("update", bp));
+            }
+        } else if (e.message === 'callstack') {
+            this._callstack = e.stack;
+            this.sendEvent(new StoppedEvent('breakpoint', StingrayDebugSession.THREAD_ID));
         }
     }
 
-    private onEngineConnectionClosed()
-    {
-        console.log('onEngineConnectionClosed', arguments);
+    /**
+     * Connection with engine was closed.
+     */
+    private onEngineConnectionClosed() {
+        this._conn = null;
+        this.sendEvent(new TerminatedEvent());
     }
 
-    private onEngineConnectionError(response: DebugProtocol.LaunchResponse)
-    {
-        response.success = false;
-        response.message = `Engine connection failure with ${this._conn._ws.url}`;
+    /**
+     * Connection with engine was aborted or the connection failed to be established.
+     */
+    private onEngineConnectionError(response: DebugProtocol.LaunchResponse) {
+        if (response) {
+            response.success = false;
+            response.message = `Engine connection failure with ${this._conn._ws.url}`;
+            this.sendResponse(response);
+        } else {
+            this.sendEvent(new TerminatedEvent());
+        }
+
+        this._conn.close();
         this._conn = null;
-        this.sendResponse(response);
     }
 
     //---- Implementation
-
-    /**
-     * Fire StoppedEvent if line is not empty.
-     */
-    private fireStepEvent(response: DebugProtocol.Response, ln: number): boolean {
-
-        if (this._sourceLines[ln].trim().length > 0) {	// non-empty line
-            this._currentLine = ln;
-            this.sendResponse(response);
-            this.sendEvent(new StoppedEvent("step", StingrayDebugSession.THREAD_ID));
-            return true;
-        }
-        return false;
-    }
 
     /**
      * Fire StoppedEvent if line has a breakpoint or the word 'exception' is found.
@@ -389,7 +523,7 @@ class StingrayDebugSession extends LoggingDebugSession {
     private fireEventsForLine(response: DebugProtocol.Response, ln: number): boolean {
 
         // find the breakpoints for the current source file
-        const breakpoints = this._breakPoints.get(this._sourceFile);
+        const breakpoints = this._breakpoints.get(this._sourceFile);
         if (breakpoints) {
             const bps = breakpoints.filter(bp => bp.line === this.convertDebuggerLineToClient(ln));
             if (bps.length > 0) {
