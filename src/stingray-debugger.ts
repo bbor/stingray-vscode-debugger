@@ -428,10 +428,16 @@ class StingrayDebugSession extends DebugSession {
      * TODO
      */
     protected evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): void {
-        response.body = {
-            result: `evaluate(context: '${args.context}', '${args.expression}')`,
-            variablesReference: 0
-        };
+        if (args.context === 'repl' && args.expression[0] === '#') {
+            // Forward the expression as an engine command.
+            let command = args.expression.slice(1).split(' ');
+            this._conn.sendCommand(command[0], ...command.slice(1));
+        } else {
+            response.body = {
+                result: `evaluate(context: '${args.context}', '${args.expression}')`,
+                variablesReference: 0
+            };
+        }
         this.sendResponse(response);
     }
 
