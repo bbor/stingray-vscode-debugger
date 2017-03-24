@@ -90,6 +90,10 @@ Other command line arguments will be set by the debugger extension itself, so yo
 
 See <http://help.autodesk.com/view/Stingray/ENU/?guid=__stingray_help_reference_engine_command_line_html> for all the engine command line arguments.
 
+Launching the game from the debugger, allow you to set breakpoint in the initialization code. Here's a short video showing it:
+
+![launch and break](https://cloud.githubusercontent.com/assets/4054655/24307901/5681ec96-109c-11e7-9bfa-6a2f9b962522.gif)
+
 ### Attach to running game/editor
 
 Once you have setup your launch configuration, you can go in the debugger side bar and start the debugging session like so:
