@@ -101,6 +101,9 @@ class StingrayDebugSession extends DebugSession {
     // Indicates the if the debug adapter is still initializing.
     private _initializing: boolean = false;
 
+    // Deferred response to indicate we are now successfully attached.
+    private _attachResponse: DebugProtocol.Response;
+
     /**
      * Creates a new debug adapter that is used for one debug session.
      * We configure the default implementation of a debug adapter here.
@@ -123,6 +126,11 @@ class StingrayDebugSession extends DebugSession {
         response.body.supportsEvaluateForHovers = true;
         response.body.supportsConfigurationDoneRequest = true;
 
+        this.sendEvent(new InitializedEvent());
+        this.sendResponse(response);
+    }
+
+    protected configurationDoneRequest(response: DebugProtocol.ConfigurationDoneResponse, args: DebugProtocol.ConfigurationDoneArguments): void {
         this.sendResponse(response);
     }
 
@@ -425,6 +433,7 @@ class StingrayDebugSession extends DebugSession {
 
         // Request engine status
         this._initializing = true;
+        this._attachResponse = response;
         this._conn.sendDebuggerCommand('report_status');
     }
 
@@ -444,7 +453,7 @@ class StingrayDebugSession extends DebugSession {
 
         if (this._initializing) {
             // Since we now know the state of the engine, lets proceed with the client initialization.
-            this.sendEvent(new InitializedEvent());
+            this.sendResponse(this._attachResponse);
             this._initializing = false;
         }
 
