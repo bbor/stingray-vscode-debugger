@@ -16,6 +16,7 @@ import {readFileSync, existsSync as fileExists} from 'fs';
 import * as fs from 'fs';
 import * as path from 'path';
 import {ConsoleConnection} from './console-connection';
+import {StingrayLauncher} from './stingray-launcher';
 
 function findFiles (startPath, filter, recurse = false, items = []) {
 
@@ -100,6 +101,9 @@ class StingrayDebugSession extends DebugSession {
     // Indicates the if the debug adapter is still initializing.
     private _initializing: boolean = false;
 
+    // Deferred response to indicate we are now successfully attached.
+    private _attachResponse: DebugProtocol.Response;
+
     /**
      * Creates a new debug adapter that is used for one debug session.
      * We configure the default implementation of a debug adapter here.
@@ -122,29 +126,58 @@ class StingrayDebugSession extends DebugSession {
         response.body.supportsEvaluateForHovers = true;
         response.body.supportsConfigurationDoneRequest = true;
 
+        this.sendEvent(new InitializedEvent());
         this.sendResponse(response);
+    }
+
+    protected configurationDoneRequest(response: DebugProtocol.ConfigurationDoneResponse, args: DebugProtocol.ConfigurationDoneArguments): void {
+        this.sendResponse(response);
+    }
+
+    /**
+     * Establish a connection with the engine.
+     */
+    protected connectToEngine(ip: string, port: number, response: DebugProtocol.Response): ConsoleConnection {
+        this._conn = new ConsoleConnection(ip, port);
+
+        // Bind connection callbacks
+        this._conn.onOpen(this.onEngineConnectionOpened.bind(this, response));
+        this._conn.onError(this.onEngineConnectionError.bind(this, response));
+
+        return this._conn;
     }
 
     /**
      * Launch the engine and then attach to it.
      */
     protected launchRequest(response: DebugProtocol.LaunchResponse, args: LaunchRequestArguments): void {
-        // TODO: Launch engine if requested
-        this.sendErrorResponse(response, 3000, "Not supported yet");
+        let toolchainPath = args.toolchain;
+        let projectFilePath = args.project_file;
+        try {
+            // Launch engine
+            let launcher = new StingrayLauncher(toolchainPath, projectFilePath)
+            let engineProcess = launcher.start();
+
+            // Tell the user what we are launching.
+            this.sendEvent(new OutputEvent(`Launching ${engineProcess.cmdline}`));
+
+            // Wait for engine to start successfully, hopefully one second should be enough.
+            // TODO: Try connection multiple time until timeout.
+            setTimeout(() => this.connectToEngine(engineProcess.ip, engineProcess.port, response), 1000);
+        } catch (err) {
+            return this.sendErrorResponse(response, 3001, err.message);
+        }
     }
 
     /**
      * Attach to the engine console server using web sockets.
      */
     protected attachRequest(response: DebugProtocol.AttachResponse, args: AttachRequestArguments): void {
-        // Establish web socket connection with engine.
         var ip = args.ip;
         var port = args.port;
-        this._conn = new ConsoleConnection(ip, port);
 
-        // Bind connection callbacks
-        this._conn.onOpen(this.onEngineConnectionOpened.bind(this, response));
-        this._conn.onError(this.onEngineConnectionError.bind(this, response));
+        // Establish web socket connection with engine.
+        this.connectToEngine(ip, port, response);
     }
 
     /**
@@ -400,6 +433,7 @@ class StingrayDebugSession extends DebugSession {
 
         // Request engine status
         this._initializing = true;
+        this._attachResponse = response;
         this._conn.sendDebuggerCommand('report_status');
     }
 
@@ -419,7 +453,7 @@ class StingrayDebugSession extends DebugSession {
 
         if (this._initializing) {
             // Since we now know the state of the engine, lets proceed with the client initialization.
-            this.sendEvent(new InitializedEvent());
+            this.sendResponse(this._attachResponse);
             this._initializing = false;
         }
 
