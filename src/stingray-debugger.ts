@@ -102,6 +102,9 @@ class StingrayDebugSession extends DebugSession {
     // Indicates the if the debug adapter is still initializing.
     private _initializing: boolean = false;
 
+    // If true, it means that after loading breakpoints, we will continue the engine evaluation.
+    private _waitingForBreakpoints: boolean = false;
+
     // Deferred response to indicate we are now successfully attached.
     private _attachResponse: DebugProtocol.Response;
 
@@ -130,6 +133,12 @@ class StingrayDebugSession extends DebugSession {
     }
 
     protected configurationDoneRequest(response: DebugProtocol.ConfigurationDoneResponse, args: DebugProtocol.ConfigurationDoneArguments): void {
+        // In case the engine is waiting for the debugger, let'S tell him we are ready.
+        if (this._waitingForBreakpoints) {
+            this._conn.sendDebuggerCommand('continue');
+            this._waitingForBreakpoints = false;
+        }
+
         this.sendResponse(response);
     }
 
@@ -462,10 +471,10 @@ class StingrayDebugSession extends DebugSession {
         }
 
         if (e.message === 'running') {
-            if (this._initializing) {
-                // In case the engine is waiting for the debugger, let'S tell him we are ready.
-                this._conn.sendDebuggerCommand('continue');
-            }
+            // Nothing to do here yet...
+        } else if (e.message === 'waiting') {
+            // This means that after loading breakpoints we will continue the engine evaluation.
+            this._waitingForBreakpoints = true;
         } else if (e.message === 'halted') {
             let line = e.line;
             let isMapped = e.source[0] === '@';
