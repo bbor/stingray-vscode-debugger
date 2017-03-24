@@ -566,9 +566,7 @@ class StingrayDebugSession extends DebugSession {
                 }
             } else {
                 // Unknown breakpoint, lets reset the engine state and continue.
-                this._conn.sendDebuggerCommand('set_breakpoints', {breakpoints: {}});
-                this._conn.sendDebuggerCommand('continue');
-                return this.sendEvent(new ContinuedEvent(StingrayDebugSession.THREAD_ID));
+                //this._conn.sendDebuggerCommand('set_breakpoints', {breakpoints: {}});
             }
         } else if (e.message === 'callstack') {
             this._callstack = e.stack;
