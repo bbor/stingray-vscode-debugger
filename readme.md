@@ -116,6 +116,12 @@ You can inspect local variables and the current broken callstack.
 
 When you step in a function that should open a new file, that file will be opened for you.
 
+### Output engine messages
+
+Engine messages are outputed in the vscode debug console. Here's a short video illustrating this:
+
+![engine message output](https://cloud.githubusercontent.com/assets/4054655/24308807/da2a0008-109f-11e7-970b-5d82953c0fe0.gif)
+
 ### Send engine commands
 
 To be available soon!
