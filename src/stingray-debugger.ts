@@ -16,6 +16,7 @@ import {readFileSync, existsSync as fileExists} from 'fs';
 import * as fs from 'fs';
 import * as path from 'path';
 import {ConsoleConnection} from './console-connection';
+import {StingrayLauncher} from './stingray-launcher';
 
 function findFiles (startPath, filter, recurse = false, items = []) {
 
@@ -126,25 +127,49 @@ class StingrayDebugSession extends DebugSession {
     }
 
     /**
+     * Establish a connection with the engine.
+     */
+    protected connectToEngine(ip: string, port: number, response: DebugProtocol.Response): ConsoleConnection {
+        this._conn = new ConsoleConnection(ip, port);
+
+        // Bind connection callbacks
+        this._conn.onOpen(this.onEngineConnectionOpened.bind(this, response));
+        this._conn.onError(this.onEngineConnectionError.bind(this, response));
+
+        return this._conn;
+    }
+
+    /**
      * Launch the engine and then attach to it.
      */
     protected launchRequest(response: DebugProtocol.LaunchResponse, args: LaunchRequestArguments): void {
-        // TODO: Launch engine if requested
-        this.sendErrorResponse(response, 3000, "Not supported yet");
+        let toolchainPath = args.toolchain;
+        let projectFilePath = args.project_file;
+        try {
+            // Launch engine
+            let launcher = new StingrayLauncher(toolchainPath, projectFilePath)
+            let engineProcess = launcher.start();
+
+            // Tell the user what we are launching.
+            this.sendEvent(new OutputEvent(`Launching ${engineProcess.cmdline}`));
+
+            // Wait for engine to start successfully, hopefully one second should be enough.
+            // TODO: Try connection multiple time until timeout.
+            setTimeout(() => this.connectToEngine(engineProcess.ip, engineProcess.port, response), 1000);
+        } catch (err) {
+            return this.sendErrorResponse(response, 3001, err.message);
+        }
     }
 
     /**
      * Attach to the engine console server using web sockets.
      */
     protected attachRequest(response: DebugProtocol.AttachResponse, args: AttachRequestArguments): void {
-        // Establish web socket connection with engine.
         var ip = args.ip;
         var port = args.port;
-        this._conn = new ConsoleConnection(ip, port);
 
-        // Bind connection callbacks
-        this._conn.onOpen(this.onEngineConnectionOpened.bind(this, response));
-        this._conn.onError(this.onEngineConnectionError.bind(this, response));
+        // Establish web socket connection with engine.
+        this.connectToEngine(ip, port, response);
     }
 
     /**

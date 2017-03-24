@@ -1,195 +1,204 @@
 {
-    "name": "stingray-debug",
-    "displayName": "Stingray Debugger",
-    "version": "0.10.14",
-    "description": "Extension to debug Autodesk Stingray application and games.",
-    "author": {
-        "url": "https://github.com/jschmidt42",
-        "name": "Jonathan Schmidt",
-        "email": "jschmidt42@gmail.com"
-    },
-    "keywords": [
-        "autodesk",
-        "stingray",
-        "debugger",
-        "lua"
-    ],
-    "publisher": "jschmidt42",
-    "engines": {
-        "vscode": "^1.1.0",
-        "node": "^6.5.0"
-    },
-    "icon": "images/icon.png",
-    "categories": [
-        "Debuggers",
-        "Languages"
-    ],
-    "repository": {
-        "type": "git",
-        "url": "https://github.com/jschmidt42/stingray-vscode-debugger.git"
-    },
-    "dependencies": {
-        "ws": "^2.2.2",
-        "lodash": "^4.17.4",
-        "vscode-debugadapter": "^1.18.0-pre.4",
-        "vscode-debugprotocol": "^1.18.0-pre.2"
-    },
-    "devDependencies": {
-        "@types/es6-collections": "^0.5.29",
-        "@types/es6-promise": "^0.0.32",
-        "@types/mocha": "^2.2.33",
-        "@types/node": "^6.0.50",
-        "typescript": "^2.0.10",
-        "mocha": "^3.1.2",
-        "vscode": "^1.1.0",
-        "vscode-debugadapter-testsupport": "^1.17.0"
-    },
-    "scripts": {
-        "prepublish": "node ./node_modules/typescript/bin/tsc -p ./src",
-        "compile": "node ./node_modules/typescript/bin/tsc -p ./src",
-        "watch": "node ./node_modules/typescript/bin/tsc -w -p ./src",
-        "postinstall": "node ./node_modules/vscode/bin/install"
-    },
-    "main": "./out/extension",
-    "activationEvents": [
-        "onCommand:extension.stingray-debug.getProgramName",
-        "onCommand:extension.stingray-debug.provideInitialConfigurations"
-    ],
-    "contributes": {
-        "languages": [{
-            "id": "sjson",
-            "aliases": ["sjson", "sjson"],
-            "extensions": [
-                ".sjson",
-                ".material",
-                ".shader",
-                ".shader_node",
-                ".shader_source",
-                ".render_config",
-                ".particles",
-                ".bsi",
-                ".texture",
-                ".unit",
-                ".physics",
-                ".landscape",
-                ".level",
-                ".timpani_bank",
-                ".timpani_master",
-                ".mouse_cursor",
-                ".surface_properties",
-                ".physics_properties",
-                ".decals",
-                ".script_flow_nodes",
-                ".flow",
-                ".network_config",
-                ".strings",
-                ".volume_type",
-                ".package",
-                ".entity",
-                ".sound_environment",
-                ".texture_category",
-                ".stingray_project",
-                ".stingray_plugin",
-                ".plugin",
-                ".shading_environment_template",
-                ".shading_environment"],
-            "configuration": "./language-configuration.json"
-        }],
-        "grammars": [{
-            "language": "sjson",
-            "scopeName": "source.sjson",
-            "path": "./syntaxes/SJSON.tmLanguage"
-        }],
-        "breakpoints": [
-            {
-                "language": "lua"
-            }
+  "name": "stingray-debug",
+  "displayName": "Stingray Debugger",
+  "version": "0.10.14",
+  "description": "Extension to debug Autodesk Stingray application and games.",
+  "author": {
+    "url": "https://github.com/jschmidt42",
+    "name": "Jonathan Schmidt",
+    "email": "jschmidt42@gmail.com"
+  },
+  "keywords": [
+    "autodesk",
+    "stingray",
+    "debugger",
+    "lua"
+  ],
+  "publisher": "jschmidt42",
+  "engines": {
+    "vscode": "^1.1.0",
+    "node": "^6.5.0"
+  },
+  "icon": "images/icon.png",
+  "categories": [
+    "Debuggers",
+    "Languages"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jschmidt42/stingray-vscode-debugger.git"
+  },
+  "dependencies": {
+    "lodash": "^4.17.4",
+    "simplified-json": "^0.2.0",
+    "vscode-debugadapter": "^1.18.0-pre.4",
+    "vscode-debugprotocol": "^1.18.0-pre.2",
+    "ws": "^2.2.2"
+  },
+  "devDependencies": {
+    "@types/es6-collections": "^0.5.29",
+    "@types/es6-promise": "^0.0.32",
+    "@types/mocha": "^2.2.33",
+    "@types/node": "^6.0.50",
+    "typescript": "^2.0.10",
+    "mocha": "^3.1.2",
+    "vscode": "^1.1.0",
+    "vscode-debugadapter-testsupport": "^1.17.0"
+  },
+  "scripts": {
+    "prepublish": "node ./node_modules/typescript/bin/tsc -p ./src",
+    "compile": "node ./node_modules/typescript/bin/tsc -p ./src",
+    "watch": "node ./node_modules/typescript/bin/tsc -w -p ./src",
+    "postinstall": "node ./node_modules/vscode/bin/install"
+  },
+  "main": "./out/extension",
+  "activationEvents": [
+    "onCommand:extension.stingray-debug.getProgramName",
+    "onCommand:extension.stingray-debug.provideInitialConfigurations"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "sjson",
+        "aliases": [
+          "sjson",
+          "sjson"
         ],
-        "debuggers": [
-            {
-                "type": "stingray",
-                "label": "Stingray",
-                "program": "./out/stingray-debugger.js",
-                "runtime": "node",
-                "variables": {
-                    "AskForProgramName": "extension.stingray-debug.getProgramName"
-                },
-                "configurationSnippets": [
-                    {
-                        "label": "Stingray: Application (lua)",
-                        "description": "A new configuration for debugging a Stingray application.",
-                        "body": {
-                            "type": "stingray",
-                            "request": "launch",
-                            "name": "${1:My application name}",
-                            "toolchain": "C:/path/to/stingray/binaries/installation",
-                            "project_file": "^\"\\${workspaceRoot}/project.stingray_project\""
-                        }
-                    },
-                    {
-                        "label": "Stingray: Editor Engine (14030)",
-                        "description": "A new configuration for debugging a Stingray Editor Engine instance",
-                        "body": {
-                            "type": "stingray",
-                            "request": "attach",
-                            "name": "${2:Stingray Editor}",
-                            "ip": "127.0.0.1",
-                            "port": 14030
-                        }
-                    },
-                    {
-                        "label": "Stingray: Asset Server (14032)",
-                        "description": "A new configuration for debugging the Stingray Asset Server console",
-                        "body": {
-                            "type": "stingray",
-                            "request": "attach",
-                            "name": "${2:Stingray Asset Server}",
-                            "ip": "127.0.0.1",
-                            "port": 14032
-                        }
-                    }
-                ],
-                "configurationAttributes": {
-                    "launch": {
-                        "required": [
-                            "toolchain"
-                        ],
-                        "properties": {
-                            "toolchain": {
-                                "type": "string",
-                                "description": "Stingray binaries installation folder."
-                            },
-                            "project_file": {
-                                "type": "string",
-                                "description": "Stingray project settings file path (i.e. *.stingray_project)"
-                            },
-                            "command_line_args": {
-                                "type": "array",
-                                "description": "Additional command line arguments passed to the engine."
-                            }
-                        }
-                    },
-
-                    "attach": {
-                        "required": [
-                            "ip", "port"
-                        ],
-                        "properties": {
-                            "ip": {
-                                "type": "string",
-                                "description": "Stingray Application console IP",
-                                "default": "127.0.0.1"
-                            },
-                            "port": {
-                                "type": "number",
-                                "description": "Stingray Application console port (see settings.ini)",
-                                "default": 14031
-                            }
-                        }
-                    }
-                },
-                "initialConfigurations": "extension.stingray-debug.provideInitialConfigurations"
+        "extensions": [
+          ".sjson",
+          ".material",
+          ".shader",
+          ".shader_node",
+          ".shader_source",
+          ".render_config",
+          ".particles",
+          ".bsi",
+          ".texture",
+          ".unit",
+          ".physics",
+          ".landscape",
+          ".level",
+          ".timpani_bank",
+          ".timpani_master",
+          ".mouse_cursor",
+          ".surface_properties",
+          ".physics_properties",
+          ".decals",
+          ".script_flow_nodes",
+          ".flow",
+          ".network_config",
+          ".strings",
+          ".volume_type",
+          ".package",
+          ".entity",
+          ".sound_environment",
+          ".texture_category",
+          ".stingray_project",
+          ".stingray_plugin",
+          ".plugin",
+          ".shading_environment_template",
+          ".shading_environment"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "sjson",
+        "scopeName": "source.sjson",
+        "path": "./syntaxes/SJSON.tmLanguage"
+      }
+    ],
+    "breakpoints": [
+      {
+        "language": "lua"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "stingray",
+        "label": "Stingray",
+        "program": "./out/stingray-debugger.js",
+        "runtime": "node",
+        "variables": {
+          "AskForProgramName": "extension.stingray-debug.getProgramName"
+        },
+        "configurationSnippets": [
+          {
+            "label": "Stingray: Application (lua)",
+            "description": "A new configuration for debugging a Stingray application.",
+            "body": {
+              "type": "stingray",
+              "request": "launch",
+              "name": "${1:My application name}",
+              "toolchain": "C:/path/to/stingray/binaries/installation",
+              "project_file": "^\"\\${workspaceRoot}/project.stingray_project\""
             }
-        ]
-    }
+          },
+          {
+            "label": "Stingray: Editor Engine (14030)",
+            "description": "A new configuration for debugging a Stingray Editor Engine instance",
+            "body": {
+              "type": "stingray",
+              "request": "attach",
+              "name": "${2:Stingray Editor}",
+              "ip": "127.0.0.1",
+              "port": 14030
+            }
+          },
+          {
+            "label": "Stingray: Asset Server (14032)",
+            "description": "A new configuration for debugging the Stingray Asset Server console",
+            "body": {
+              "type": "stingray",
+              "request": "attach",
+              "name": "${2:Stingray Asset Server}",
+              "ip": "127.0.0.1",
+              "port": 14032
+            }
+          }
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "toolchain"
+            ],
+            "properties": {
+              "toolchain": {
+                "type": "string",
+                "description": "Stingray binaries installation folder."
+              },
+              "project_file": {
+                "type": "string",
+                "description": "Stingray project settings file path (i.e. *.stingray_project)"
+              },
+              "command_line_args": {
+                "type": "array",
+                "description": "Additional command line arguments passed to the engine."
+              }
+            }
+          },
+          "attach": {
+            "required": [
+              "ip",
+              "port"
+            ],
+            "properties": {
+              "ip": {
+                "type": "string",
+                "description": "Stingray Application console IP",
+                "default": "127.0.0.1"
+              },
+              "port": {
+                "type": "number",
+                "description": "Stingray Application console port (see settings.ini)",
+                "default": 14031
+              }
+            }
+          }
+        },
+        "initialConfigurations": "extension.stingray-debug.provideInitialConfigurations"
+      }
+    ]
+  }
 }

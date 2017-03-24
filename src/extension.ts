@@ -11,10 +11,10 @@ const initialConfigurations = {
 	configurations: [
 		{
 			type: 'stingray',
-			request: 'launch',
+			request: 'attach',
 			name: 'Stingray Debug',
 			ip: "127.0.0.1",
-			port: 14030
+			port: 14000
 		}
 	]
 };
