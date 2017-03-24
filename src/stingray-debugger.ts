@@ -451,13 +451,14 @@ class StingrayDebugSession extends DebugSession {
         this.sendEvent(new OutputEvent(`Debugger status: ${e.message}`));
 
         if (this._initializing) {
+            // Since we now know the state of the engine, lets proceed with the client initialization.
             this.sendEvent(new InitializedEvent());
-        }
 
-        // Since we now know the state of the engine, lets proceed with the client initialization.
-        if (this._attachResponse) {
-            this.sendResponse(this._attachResponse);
-            this._attachResponse = null;
+            // Tell the client that we are now attached.
+            if (this._attachResponse) {
+                this.sendResponse(this._attachResponse);
+                this._attachResponse = null;
+            }
         }
 
         if (e.message === 'running') {
