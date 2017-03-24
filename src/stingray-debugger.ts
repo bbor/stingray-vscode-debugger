@@ -133,6 +133,7 @@ class StingrayDebugSession extends DebugSession {
         // Set supported features
         response.body.supportsEvaluateForHovers = true;
         response.body.supportsConfigurationDoneRequest = true;
+        response.body.supportsRestartRequest = true;
         this.sendResponse(response);
     }
 
@@ -202,6 +203,15 @@ class StingrayDebugSession extends DebugSession {
         this._conn = null;
 
         // Proceed with disconnection
+        this.sendResponse(response);
+    }
+
+    /**
+     * Called when the clients wants to reboot the engine debug session.
+     * This send to the engine the `refresh` and `reboot` commands.
+     */
+    protected restartRequest(response: DebugProtocol.RestartResponse, args: DebugProtocol.RestartArguments): void {
+        this._conn.sendCommand('reboot'/*, ['-ini settings.ini']*/);
         this.sendResponse(response);
     }
 
@@ -435,11 +445,17 @@ class StingrayDebugSession extends DebugSession {
 
     //---- Engine message handlers
 
+    /**
+     * Handle engine console messages.
+     */
     private on_engine_message(e: EngineEvent, data: ArrayBuffer = null) {
         let engineMessage = `[${e.level.toUpperCase()}] ${e.system} / ${e.message}`;
         this.sendEvent(new OutputEvent(engineMessage));
     }
 
+    /**
+     * Handle engine lua debugging messages.
+     */
     private on_engine_lua_debugger(e: EngineEvent, data: ArrayBuffer = null) {
         this.sendEvent(new OutputEvent(`Debugger status: ${e.message}`));
 
@@ -505,7 +521,6 @@ class StingrayDebugSession extends DebugSession {
      * @param {ArrayBuffer} data - Message binary data
      */
     private onEngineMessageReceived(e: EngineEvent, data: ArrayBuffer = null) {
-
         let engineHandlerName = 'on_engine_' + e.type;
         if (!this[engineHandlerName])
             return;

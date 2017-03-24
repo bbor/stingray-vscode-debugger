@@ -122,6 +122,10 @@ Engine messages are outputed in the vscode debug console. Here's a short video i
 
 ![engine message output](https://cloud.githubusercontent.com/assets/4054655/24308807/da2a0008-109f-11e7-970b-5d82953c0fe0.gif)
 
+### Reboot the engine.
+
+The debugger restart button will reboot the engine, reloading/refreshing all resources and restarting the game. So if you had a breakpoint in the `init` routine, the debugger should break into it.
+
 ### Send engine commands
 
 To be available soon!
