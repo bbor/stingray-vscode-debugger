@@ -3,6 +3,7 @@
  * NOTE: Debugging protocal interfaces: https://github.com/Microsoft/vscode-debugadapter-node/blob/master/protocol/src/debugProtocol.ts
  *
  * FIXME: Close debug session when engine is killed or closed.
+ * FIXME: Kill the launched instance when shutting down the debug session.
  */
 import {
     Logger,
@@ -125,8 +126,6 @@ class StingrayDebugSession extends DebugSession {
         // Set supported features
         response.body.supportsEvaluateForHovers = true;
         response.body.supportsConfigurationDoneRequest = true;
-
-        this.sendEvent(new InitializedEvent());
         this.sendResponse(response);
     }
 
@@ -453,11 +452,21 @@ class StingrayDebugSession extends DebugSession {
 
         if (this._initializing) {
             // Since we now know the state of the engine, lets proceed with the client initialization.
-            this.sendResponse(this._attachResponse);
-            this._initializing = false;
+            this.sendEvent(new InitializedEvent());
+
+            // Tell the client that we are now attached.
+            if (this._attachResponse) {
+                this.sendResponse(this._attachResponse);
+                this._attachResponse = null;
+            }
         }
 
-        if (e.message === 'halted') {
+        if (e.message === 'running') {
+            if (this._initializing) {
+                // In case the engine is waiting for the debugger, let'S tell him we are ready.
+                this._conn.sendDebuggerCommand('continue');
+            }
+        } else if (e.message === 'halted') {
             let line = e.line;
             let isMapped = e.source[0] === '@';
             let resourcePath = isMapped ? e.source.slice(1) : e.source;
@@ -477,6 +486,8 @@ class StingrayDebugSession extends DebugSession {
             this._callstack = e.stack;
             this.sendEvent(new StoppedEvent('breakpoint', StingrayDebugSession.THREAD_ID));
         }
+
+        this._initializing = false;
     }
 
     /**
