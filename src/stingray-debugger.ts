@@ -68,14 +68,18 @@ export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArgum
  * Engine debug message.
  * These are usually sent from the engine debugger.
  */
-interface EngineMessage {
+interface EngineEvent {
     type: string,
     message: string,
 
-    // halted
+    // lua_debugger
     line?: number,
     source?: string,
-    stack?: object
+    stack?: object,
+
+    // message
+    level?: string,
+    system?: string
 }
 
 class StingrayDebugSession extends DebugSession {
@@ -429,34 +433,14 @@ class StingrayDebugSession extends DebugSession {
         this.sendResponse(response);
     }
 
-    //---- Events
+    //---- Engine message handlers
 
-    /**
-     * Called when the engine debugger session is established.
-     */
-    private onEngineConnectionOpened(response: DebugProtocol.LaunchResponse) {
-        // Bind additional connection messages.
-        this._conn.onMessage(this.onEngineMessageReceived.bind(this));
-        this._conn.onClose(this.onEngineConnectionClosed.bind(this));
-
-        // Request engine status
-        this._initializing = true;
-        this._attachResponse = response;
-        this._conn.sendDebuggerCommand('report_status');
+    private on_engine_message(e: EngineEvent, data: ArrayBuffer = null) {
+        let engineMessage = `[${e.level.toUpperCase()}] ${e.system} / ${e.message}`;
+        this.sendEvent(new OutputEvent(engineMessage));
     }
 
-    /**
-     * Called when an engine message is received.
-     * @param {EngineMessage} dm - Engine debugging message
-     * @param {ArrayBuffer} data - Message binary data
-     */
-    private onEngineMessageReceived(e: EngineMessage, data: ArrayBuffer = null) {
-        if (e.type !== 'lua_debugger')
-            return;
-
-        if (!e.message)
-            return;
-
+    private on_engine_lua_debugger(e: EngineEvent, data: ArrayBuffer = null) {
         this.sendEvent(new OutputEvent(`Debugger status: ${e.message}`));
 
         if (this._initializing) {
@@ -497,6 +481,36 @@ class StingrayDebugSession extends DebugSession {
         }
 
         this._initializing = false;
+    }
+
+    //---- Events
+
+    /**
+     * Called when the engine debugger session is established.
+     */
+    private onEngineConnectionOpened(response: DebugProtocol.LaunchResponse) {
+        // Bind additional connection messages.
+        this._conn.onMessage(this.onEngineMessageReceived.bind(this));
+        this._conn.onClose(this.onEngineConnectionClosed.bind(this));
+
+        // Request engine status
+        this._initializing = true;
+        this._attachResponse = response;
+        this._conn.sendDebuggerCommand('report_status');
+    }
+
+    /**
+     * Called when an engine message is received.
+     * @param {EngineMessage} dm - Engine debugging message
+     * @param {ArrayBuffer} data - Message binary data
+     */
+    private onEngineMessageReceived(e: EngineEvent, data: ArrayBuffer = null) {
+
+        let engineHandlerName = 'on_engine_' + e.type;
+        if (!this[engineHandlerName])
+            return;
+        // Call the function type for this engine message.
+        this[engineHandlerName].call(this, e, data);
     }
 
     /**
