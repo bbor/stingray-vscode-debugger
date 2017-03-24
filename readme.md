@@ -122,13 +122,23 @@ Engine messages are outputed in the vscode debug console. Here's a short video i
 
 ![engine message output](https://cloud.githubusercontent.com/assets/4054655/24308807/da2a0008-109f-11e7-970b-5d82953c0fe0.gif)
 
+### Reboot the engine.
+
+The debugger restart button will reboot the engine, reloading/refreshing all resources and restarting the game. So if you had a breakpoint in the `init` routine, the debugger should break into it.
+
 ### Send engine commands
 
-To be available soon!
+You can send engine commands to the engine by prefixing those commands with `#` in the debug conole REPL.
+
+You can find available console commands here <http://help.autodesk.com/view/Stingray/ENU/?guid=__stingray_help_reference_console_commands_html>
+
+![engine commands](https://cloud.githubusercontent.com/assets/4054655/24309894/005f09f4-10a4-11e7-9ff4-1e051381fdbe.gif)
 
 ### Send engine scripts
 
-To be available soon!
+Also, everything you type that is **not** prefixed with `#` will be evaluated as lua script.
+
+![engine scripts](https://cloud.githubusercontent.com/assets/4054655/24311675/96443884-10ab-11e7-8b07-2fdc77c279aa.gif)
 
 ### Print ID strings
 

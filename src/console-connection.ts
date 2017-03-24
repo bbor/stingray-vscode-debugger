@@ -96,7 +96,7 @@ export class ConsoleConnection {
         this._send({
             type: "command",
             command: command,
-            arg: args
+            arg: [...args]
         });
     }
 
