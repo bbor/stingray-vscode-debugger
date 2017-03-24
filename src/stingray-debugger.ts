@@ -80,6 +80,9 @@ interface EngineEvent {
     // message
     level?: string,
     system?: string
+    message_type?: string
+
+    // command out
 }
 
 class StingrayDebugSession extends DebugSession {
@@ -111,6 +114,9 @@ class StingrayDebugSession extends DebugSession {
 
     // Deferred response to indicate we are now successfully attached.
     private _attachResponse: DebugProtocol.Response;
+
+    // Cache the last evaluation response.
+    private _lastEvalResponse: DebugProtocol.Response;
 
     /**
      * Creates a new debug adapter that is used for one debug session.
@@ -425,20 +431,34 @@ class StingrayDebugSession extends DebugSession {
     }
 
     /**
-     * TODO
+     * Evaluate engine commands and lua scripts
      */
     protected evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): void {
         if (args.context === 'repl' && args.expression[0] === '#') {
             // Forward the expression as an engine command.
             let command = args.expression.slice(1).split(' ');
+            this._lastEvalResponse = response;
             this._conn.sendCommand(command[0], ...command.slice(1));
+        } else if (args.context === 'repl') {
+            // Evaluate lua script on the engine side.
+            let evalScript = `
+                local script = loadstring([[${args.expression}]])
+                if script == nil then
+                    script = loadstring([[return ${args.expression}]])
+                end
+                if script then
+                    return ${args.expression}
+                end
+            `;
+            this._lastEvalResponse = response;
+            this._conn.sendScript(evalScript);
         } else {
             response.body = {
                 result: `evaluate(context: '${args.context}', '${args.expression}')`,
                 variablesReference: 0
             };
+            this.sendResponse(response);
         }
-        this.sendResponse(response);
     }
 
     /**
@@ -455,8 +475,19 @@ class StingrayDebugSession extends DebugSession {
      * Handle engine console messages.
      */
     private on_engine_message(e: EngineEvent, data: ArrayBuffer = null) {
-        let engineMessage = `[${e.level.toUpperCase()}] ${e.system} / ${e.message}`;
-        this.sendEvent(new OutputEvent(engineMessage));
+        if (e.system) {
+            let engineMessage = `[${e.level.toUpperCase()}] ${e.system} / ${e.message}`;
+            this.sendEvent(new OutputEvent(engineMessage));
+        } else if (e.message_type === 'command_output') {
+            let result = '< ' + e.message;
+            if (this._lastEvalResponse) {
+                this._lastEvalResponse.body = { result: result, variablesReference: 0 };
+                this.sendResponse(this._lastEvalResponse);
+                this._lastEvalResponse = null;
+            } else {
+                this.sendEvent(new OutputEvent(result));
+            }
+        }
     }
 
     /**
@@ -474,10 +505,52 @@ class StingrayDebugSession extends DebugSession {
                 this.sendResponse(this._attachResponse);
                 this._attachResponse = null;
             }
+
+            // Inject a few debugging functions into the running game.
+            this._conn.sendScript(`
+                if not to_console_string then
+                    function to_console_string(x)
+                        local function comp(a,b)
+                            if  type(a) ~= type(b) then
+                                return type(a) < type(b)
+                            else
+                                return a < b
+                            end
+                        end
+
+                        if type(x) == 'table' then
+                            local keys = {}
+                            for k,_ in pairs(x) do
+                                keys[#keys+1] = k
+                            end
+                            table.sort(keys, comp)
+                            local s = ''
+                            for i,k in ipairs(keys) do
+                                if type(x[k]) == 'string' then
+                                    s = s .. string.format('%-20s  %q\\n', tostring(k), x[k])
+                                else
+                                    s = s .. string.format('%-20s  %s\\n', tostring(k), tostring(x[k]))
+                                end
+                            end
+                            return s
+                        elseif type(x) == 'function' then
+                            local info = debug.getinfo(x)
+                            if info.what == 'C' then
+                                return 'C function'
+                            else
+                                return 'Lua function, ' .. info.short_src .. ':' .. info.linedefined
+                            end
+                            return to_console_string(info)
+                        else
+                            return tostring(x)
+                        end
+                    end
+                end
+            `);
         }
 
         if (e.message === 'running') {
-            // Nothing to do here yet...
+            // ...
         } else if (e.message === 'waiting') {
             // This means that after loading breakpoints we will continue the engine evaluation.
             this._waitingForBreakpoints = true;
