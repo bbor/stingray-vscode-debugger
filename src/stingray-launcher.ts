@@ -77,7 +77,7 @@ export class StingrayLauncher {
         let engineProcess = new StingrayEngineProcess(engineExe);
         engineProcess.start([
             "--data-dir", `"${this.dataDir}"`,
-            //"--wait-for-debugger"
+            "--wait-for-debugger"
         ], DEFAULT_ENGINE_CONSOLE_PORT);
 
         return engineProcess;
