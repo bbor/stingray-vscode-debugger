@@ -65,6 +65,77 @@ export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArgum
 }
 
 /**
+ * Lua helpers that get injected int the debuggee runtime.
+ */
+const luaHelpers = [
+    `
+    if not to_console_string then
+        function to_console_string(x)
+            local function comp(a,b)
+                if  type(a) ~= type(b) then
+                    return type(a) < type(b)
+                else
+                    return a < b
+                end
+            end
+
+            if type(x) == 'table' then
+                local keys = {}
+                for k,_ in pairs(x) do
+                    keys[#keys+1] = k
+                end
+                table.sort(keys, comp)
+                local s = ''
+                for i,k in ipairs(keys) do
+                    if type(x[k]) == 'string' then
+                        s = s .. string.format('%-20s  %q\\n', tostring(k), x[k])
+                    else
+                        s = s .. string.format('%-20s  %s\\n', tostring(k), tostring(x[k]))
+                    end
+                end
+                return s
+            elseif type(x) == 'function' then
+                local info = debug.getinfo(x)
+                if info.what == 'C' then
+                    return 'C function'
+                else
+                    return 'Lua function, ' .. info.short_src .. ':' .. info.linedefined
+                end
+                return to_console_string(info)
+            else
+                return tostring(x)
+            end
+        end
+    end
+    `,
+    `
+    if not send_script_output then
+        function send_script_output(result, requestId)
+            local msg = {type = 'script_output'}
+            msg.result = result
+            msg.result_type = type(result)
+            msg.requestId = requestId
+            stingray.Application.console_send(msg);
+        end
+    end
+    `,
+    `
+    if not evaluate_script_expression then
+        function evaluate_script_expression(expression, requestId)
+            local script = loadstring(expression)
+            if script == nil then
+                script = loadstring("return " .. expression)
+            end
+            if script then
+                local result = script()
+                send_script_output(result, requestId)
+            end
+        end
+    end
+    `
+]
+
+/**
  * Engine debug message.
  * These are usually sent from the engine debugger.
  */
@@ -76,13 +147,82 @@ interface EngineEvent {
     line?: number,
     source?: string,
     stack?: object,
-
+    node_index?: number
+    requestId?: number
     // message
     level?: string,
     system?: string
     message_type?: string
 
     // command out
+}
+
+class ScopeContent {
+    variablesReference: number;
+    frameId: number;
+    scopeId: string;
+    tableVarName: string = null;
+    tablePath: Array<number> = null;
+    variables: any = null;
+
+    public dataReady () : boolean {
+        return this.variables !== null;
+    }
+
+    public isTable() : boolean {
+        return !!this.tableVarName;
+    }
+
+    public getVariables() : any {
+        if (!this.dataReady()) {
+            throw new Error('Data not ready');
+        }
+
+        return this.variables;
+    }
+
+    public getVariable(name: string) : any {
+        if (!this.dataReady()) {
+            throw new Error('Data not ready');
+        }
+
+        return _.find(this.variables, variable => variable.name === name);
+    }
+
+    public toString() {
+        let path = this.tablePath ? this.tablePath.join(',') : "";
+        return `Scope[
+            id: ${this.variablesReference},
+            scopeId: ${this.scopeId},
+            tableVarName: ${this.tableVarName},
+            tablePath: ${path}
+        ]`;
+    }
+}
+
+function isPotentialIdentifier (str: string) {
+    const format = /[&*()+\-=\[\]{}':"\\|,\/]/;
+    return !format.test(str);
+}
+
+function stringToTypedValue(luaType: string, strValue: string) : any {
+    if (luaType === 'string') {
+        return strValue;
+    }
+
+    if (luaType === 'boolean') {
+        return strValue === 'true';
+    }
+
+    if (luaType === 'number') {
+        return Number(strValue);
+    }
+
+    if (luaType === 'table') {
+        return [];
+    }
+
+    throw new Error('unsupported type');
 }
 
 class StingrayDebugSession extends DebugSession {
@@ -101,7 +241,7 @@ class StingrayDebugSession extends DebugSession {
     private _callstack: any = null;
 
     // Cached source roots.
-    private _roots = {};
+    private _projectFolderMaps = {};
 
     // Engine web socket connection.
     private _conn: ConsoleConnection = null;
@@ -117,6 +257,21 @@ class StingrayDebugSession extends DebugSession {
 
     // Cache the last evaluation response.
     private _lastEvalResponse: DebugProtocol.Response;
+
+    // Pool of ids for ScopeContent (table or top level scopes)
+    private _variableReferenceId : number = 1;
+
+    // All the ScopeContent (value container) -> table or top level scopes
+    private _scopesContent = new Map<number, ScopeContent>();
+
+    // All scopes accessible at the top of the stack (loca, up_values, globals)
+    private _topLevelScopes = new Array<ScopeContent>();
+
+    // Pool of id for request made to the debugger
+    private _requestId : number = 1;
+
+    // Pending promises for requests on the debugger
+    private _requests: Map<number, any> = new Map<number, any>();
 
     /**
      * Creates a new debug adapter that is used for one debug session.
@@ -140,6 +295,12 @@ class StingrayDebugSession extends DebugSession {
         response.body.supportsEvaluateForHovers = true;
         response.body.supportsConfigurationDoneRequest = true;
         response.body.supportsRestartRequest = true;
+        response.body.supportsSetVariable = true;
+
+        // TODO: not implemented yet.
+        // response.body.supportsCompletionsRequest = true;
+        // response.body.supportsGotoTargetsRequest = true;
+
         this.sendResponse(response);
     }
 
@@ -229,10 +390,6 @@ class StingrayDebugSession extends DebugSession {
         this.sendResponse(response);
     }
 
-    protected sourceRequest(response: DebugProtocol.SourceResponse, args: DebugProtocol.SourceArguments): void {
-        this.sendResponse(response);
-    }
-
     /**
      * Handle client breakpoints.
      */
@@ -256,7 +413,7 @@ class StingrayDebugSession extends DebugSession {
             let projectFilePath = _.first(findFiles(dirPath, '.stingray_project'));
             if (projectFilePath && fileExists(projectFilePath)) {
                 resourcePath = path.relative(dirPath, filePath);
-                this._roots["<project>"] = dirPath;
+                this._projectFolderMaps["<project>"] = dirPath;
                 break;
             }
 
@@ -264,7 +421,7 @@ class StingrayDebugSession extends DebugSession {
             if (fileExists(stingrayDirTokenFilePath)) {
                 let mapName = path.basename(dirPath);
                 resourcePath = path.join(mapName, path.relative(dirPath, filePath));
-                this._roots[mapName] = path.dirname(dirPath);
+                this._projectFolderMaps[mapName] = path.dirname(dirPath);
                 break;
             }
 
@@ -352,9 +509,21 @@ class StingrayDebugSession extends DebugSession {
         if (!this._callstack)
             return this.sendErrorResponse(response, 1000, "No callstack available");
 
-        const frameReference = args.frameId;
+        this._scopesContent.clear();
+        this._topLevelScopes.length = 0;
+
         const scopes = new Array<Scope>();
-        scopes.push(new Scope("Local", frameReference + 1, false));
+        const scopeDescs = {
+            local: 'Local',
+            up_values: 'Closure'
+        }
+
+        _.each(scopeDescs, (scopeDisplayName, scopeId) => {
+            const scopeContent = this.createScopeContent(args.frameId, scopeId);
+            this.populateVariables(scopeContent, this._callstack[args.frameId][scopeId]);
+            this._topLevelScopes.push(scopeContent);
+            scopes.push(new Scope(scopeDisplayName, scopeContent.variablesReference, false));
+        });
 
         response.body = { scopes: scopes };
         this.sendResponse(response);
@@ -367,34 +536,24 @@ class StingrayDebugSession extends DebugSession {
         if (!this._callstack)
             return this.sendErrorResponse(response, 1000, "No callstack available");
 
-        const scopeRef = args.variablesReference;
-        let frameIndex = scopeRef - 1;
-        const frameValues = this._callstack[frameIndex]["local"].concat(this._callstack[frameIndex]["up_values"]);
-        const variables = [];
-        for (let fv of frameValues) {
-            if (fv.var_name === "(*temporary)")
-                continue;
-            if (fv.value === "C function")
-                continue;
-            let varName = `${fv.var_name} (${fv.type})`;
-            let value = fv.value;
-            let type = fv.type;
-            if (fv.type === 'table') {
-                //type = 'object';
-                //value = value.split('\n');
-            }
-            variables.push({
-                name: varName,
-                type: type,
-                value: value,
-                variablesReference: 0
-            });
+        const scopeContent = this._scopesContent.get(args.variablesReference);
+        if (!scopeContent) {
+            throw new Error('Unknown variablesReference ' + args.variablesReference);
         }
 
-        response.body = {
-            variables: variables
-        };
-        this.sendResponse(response);
+        if (scopeContent.dataReady()) {
+            response.body = {
+                variables: scopeContent.getVariables()
+            };
+            return this.sendResponse(response);
+        }
+
+        this.fetchScopeData(scopeContent).then(() => {
+            response.body = {
+                variables: scopeContent.getVariables()
+            };
+            this.sendResponse(response);
+        });
     }
 
     /**
@@ -440,24 +599,12 @@ class StingrayDebugSession extends DebugSession {
             this._lastEvalResponse = response;
             this._conn.sendCommand(command[0], ...command.slice(1));
         } else if (args.context === 'repl') {
-            // Evaluate lua script on the engine side.
-            let evalScript = `
-                local script = loadstring([[${args.expression}]])
-                if script == nil then
-                    script = loadstring([[return ${args.expression}]])
-                end
-                if script then
-                    return ${args.expression}
-                end
-            `;
-            this._lastEvalResponse = response;
-            this._conn.sendScript(evalScript);
-        } else {
-            response.body = {
-                result: `evaluate(context: '${args.context}', '${args.expression}')`,
-                variablesReference: 0
-            };
-            this.sendResponse(response);
+            this.evaluateExpression(response, args.expression);
+        } else if (args.context === 'hover') {
+            let luaValueExpression = args.expression.replace(':', '.');
+            this.evaluateExpression(response, luaValueExpression);
+        } else if (args.context === 'watch') {
+            this.evaluateExpression(response, args.expression);
         }
     }
 
@@ -466,6 +613,50 @@ class StingrayDebugSession extends DebugSession {
      */
     protected threadsRequest(response: DebugProtocol.ThreadsResponse): void {
         response.body = { threads: [ new Thread(StingrayDebugSession.THREAD_ID, "thread 1") ] };
+        this.sendResponse(response);
+    }
+
+    protected setVariableRequest(response: DebugProtocol.SetVariableResponse, args: DebugProtocol.SetVariableArguments): void {
+        const scopeContent = this._scopesContent.get(args.variablesReference);
+        if (!scopeContent) {
+            throw new Error('Unknown variablesReference ' + args.variablesReference);
+        }
+
+        let variable = scopeContent.getVariable(args.name);
+        if (!variable) {
+            throw new Error('Cannot find variable ' + args.name);
+        }
+
+        let newValue = stringToTypedValue(variable.type, args.value);
+
+        this.sendDebuggerRequest('modify_variable', {
+            local_num: 0,
+            table_path: {
+                level: scopeContent.frameId,
+                local: scopeContent.isTable() ? scopeContent.tableVarName : variable.name,
+                path: scopeContent.isTable() ? scopeContent.tablePath.concat(variable.tableIndex + 1) : []
+            },
+            value_type: variable.type,
+            value: args.value
+        });
+
+        // Update local variable cahce
+        variable.value = newValue;
+
+        response.body = {
+            value: args.value,
+            type: variable.type
+        }
+        this.sendResponse(response);
+    }
+
+    protected gotoTargetsRequest(response: DebugProtocol.GotoTargetsResponse, args: DebugProtocol.GotoTargetsArguments): void {
+        // console.log('gotoTargetsRequest', args);
+        this.sendResponse(response);
+    }
+
+    protected completionsRequest(response: DebugProtocol.CompletionsResponse, args: DebugProtocol.CompletionsArguments): void {
+        // console.log('completionsRequest', args);
         this.sendResponse(response);
     }
 
@@ -507,49 +698,19 @@ class StingrayDebugSession extends DebugSession {
             }
 
             // Inject a few debugging functions into the running game.
-            this._conn.sendScript(`
-                if not to_console_string then
-                    function to_console_string(x)
-                        local function comp(a,b)
-                            if  type(a) ~= type(b) then
-                                return type(a) < type(b)
-                            else
-                                return a < b
-                            end
-                        end
-
-                        if type(x) == 'table' then
-                            local keys = {}
-                            for k,_ in pairs(x) do
-                                keys[#keys+1] = k
-                            end
-                            table.sort(keys, comp)
-                            local s = ''
-                            for i,k in ipairs(keys) do
-                                if type(x[k]) == 'string' then
-                                    s = s .. string.format('%-20s  %q\\n', tostring(k), x[k])
-                                else
-                                    s = s .. string.format('%-20s  %s\\n', tostring(k), tostring(x[k]))
-                                end
-                            end
-                            return s
-                        elseif type(x) == 'function' then
-                            local info = debug.getinfo(x)
-                            if info.what == 'C' then
-                                return 'C function'
-                            else
-                                return 'Lua function, ' .. info.short_src .. ':' .. info.linedefined
-                            end
-                            return to_console_string(info)
-                        else
-                            return tostring(x)
-                        end
-                    end
-                end
-            `);
+            this._conn.sendScript(luaHelpers.join("\n"));
         }
 
-        if (e.message === 'running') {
+        if (e.node_index || e.requestId) {
+            let pendingRequest = this._requests.get(e.node_index || e.requestId);
+            if (pendingRequest) {
+                this._requests.delete(e.node_index);
+                pendingRequest.resolve([e, data]);
+            } else {
+                // TODO: how to report these?
+                // console.error('Message request ignored: ' + e.node_index);
+            }
+        } else if (e.message === 'running') {
             // ...
         } else if (e.message === 'waiting') {
             // This means that after loading breakpoints we will continue the engine evaluation.
@@ -598,6 +759,15 @@ class StingrayDebugSession extends DebugSession {
      * @param {ArrayBuffer} data - Message binary data
      */
     private onEngineMessageReceived(e: EngineEvent, data: ArrayBuffer = null) {
+        if (e.requestId) {
+            let pendingRequest = this._requests.get(e.requestId);
+            if (pendingRequest) {
+                this._requests.delete(e.node_index);
+                pendingRequest.resolve([e, data]);
+                return;
+            }
+        }
+
         let engineHandlerName = 'on_engine_' + e.type;
         if (!this[engineHandlerName])
             return;
@@ -630,15 +800,259 @@ class StingrayDebugSession extends DebugSession {
     private getResourceFilePath (source) {
         let isMapped = source[0] === '@';
         let resourcePath = isMapped ? source.slice(1) : source;
-        let filePath = this._roots["<project>"] ? path.join(this._roots["<project>"], resourcePath) : resourcePath;
+        let filePath = this._projectFolderMaps["<project>"] ? path.join(this._projectFolderMaps["<project>"], resourcePath) : resourcePath;
         if (isMapped && !fileExists(filePath)) {
             let mapName = _.first(resourcePath.split('/'));
-            if (mapName && this._roots[mapName]) {
-                filePath = path.join(this._roots[mapName], resourcePath);
+            if (mapName && this._projectFolderMaps[mapName]) {
+                filePath = path.join(this._projectFolderMaps[mapName], resourcePath);
             }
         }
 
         return filePath;
+    }
+
+    private setupRequest() : any {
+        let request = {resolve: null, reject: null};
+        let requestId = this._requestId++;
+        this._requests.set(requestId, request);
+        let p = new Promise<any>((resolve, reject) => {
+            request.resolve = resolve;
+            request.reject = reject;
+        });
+
+        return {promise: p, id: requestId};
+    }
+
+    private sendDebuggerRequest (command: string, data : any, requestIdName: string = 'requestId') : Promise<any> {
+        let request = this.setupRequest();
+
+        data = data || {};
+        data[requestIdName] = request.id;
+
+        this._conn.sendDebuggerCommand(command, data);
+
+        return request.promise;
+    }
+
+    /**
+     * Evaluate a Lua snippet and send its result in a response.
+     * @param response
+     * @param expression
+     */
+    private evaluateLuaSnippet(response: DebugProtocol.EvaluateResponse, expression: string) : Promise<any>  {
+        let request = this.setupRequest();
+
+        // Evaluate lua script on the engine side.
+        let evalScript = `evaluate_script_expression([[${expression}]], ${request.id})`;
+        let p = request.promise.then(result => {
+            if (!result || result.length === 0)
+                return;
+            let msg = result[0];
+            response.body = {
+                result: msg.result ? msg.result.toString() : '',
+                type: msg.result_type,
+                variablesReference: 0
+            }
+
+            this.sendResponse(response);
+        });
+
+
+        this._conn.sendScript(evalScript);
+        return p;
+    }
+
+
+    /**
+     *Evaluate a Lua expression. If the expression appears to be an identifier, we dig into the scope chain to
+     properly populate the response with a variablesReference.
+     * @param response
+     * @param expression
+     */
+    private evaluateExpression(response: DebugProtocol.EvaluateResponse, expression: string) {
+        if (!isPotentialIdentifier(expression)) {
+            return this.evaluateLuaSnippet(response, expression);
+        }
+
+        this.getIdentifierInfo(expression).then(result => {
+            if (!result) {
+                return this.evaluateLuaSnippet(response, expression);
+            }
+
+            if (result.identifier_type === 'table') {
+                return this.evaluateIdentifier(expression).then(variable => {
+                    if (!variable) {
+                        // throw new Error('Cannot resolve table ' + expression);
+                        response.body = {
+                            result: result.identifier_value,
+                            type: result.identifier_type,
+                            variablesReference: 0
+                        };
+                        this.sendResponse(response);
+                        return;
+                    }
+
+                    let scope = this._scopesContent.get(variable.variablesReference);
+                    response.body = {
+                        result: expression,
+                        type: variable.type,
+                        variablesReference: variable.variablesReference
+                    };
+                    this.sendResponse(response);
+                });
+            }
+
+            // Immediate Value
+            response.body = {
+                result: result.identifier_value,
+                type: result.identifier_type,
+                variablesReference: 0
+            };
+            this.sendResponse(response);
+        });
+    }
+
+    /**
+     * Evaluate a luaExpression as if it was an identifier
+     * @param luaValueExpression
+     */
+    private evaluateIdentifier(luaValueExpression: string) : Promise<any> {
+        let paths = luaValueExpression.split('.');
+        if (paths.length === 0) {
+            // Wrongly constructed path: empty
+            return Promise.resolve();
+        }
+
+        for (let topLevelScope of this._topLevelScopes) {
+            let variable = topLevelScope.getVariable(paths[0]);
+            if (variable) {
+                if (paths.length === 1) {
+                    // early out: we were accessing a first level variable
+                    return Promise.resolve(variable);
+                }
+
+                // We have found the right scope containing the variable, dig into the scope further:
+                return this.evaluateIdentifierInScope(topLevelScope, paths);
+            }
+        }
+
+        return Promise.resolve();
+    }
+
+    /**
+     * Dig from the scopes chain to find a identifier with a specific 'dot' separated path.
+     * @param scope
+     * @param paths
+     */
+    private evaluateIdentifierInScope(scope: ScopeContent, paths: Array<string>) : Promise<any> {
+        return this.fetchScopeData(scope).then(() => {
+            let pathToken = paths.shift();
+            let variable = scope.getVariable(pathToken);
+            if (!variable) {
+                // Variable is not found in scope: bad path
+                return Promise.resolve();
+            }
+
+            if (paths.length === 0) {
+                // Variable is found
+                return Promise.resolve(variable);
+            }
+
+            if (!variable.variablesReference) {
+                // Variable is not a table: bad path
+                return Promise.resolve();
+            }
+
+            // Dig deeper:
+            let childScope = this._scopesContent.get(variable.variablesReference);
+            return this.evaluateIdentifierInScope(childScope, paths);
+        });
+    }
+
+    /**
+     * Get an identifier from the engine
+     * @param identifier
+     * @param stackOffset
+     */
+    private getIdentifierInfo(identifier: string, stackOffset: number = 0) : Promise<any> {
+        return this.sendDebuggerRequest('get_identifier_info', {
+            identifier,
+            stackOffset
+        }).then(resultArray => {
+            return resultArray.length > 0 ? resultArray[0] : null;
+        });
+    }
+
+    private createScopeContent (frameId : number, scopeId : string) : ScopeContent {
+        let scopeContent = new ScopeContent();
+        scopeContent.variablesReference = this._variableReferenceId++;
+        scopeContent.frameId = frameId;
+        scopeContent.scopeId = scopeId;
+        this._scopesContent.set(scopeContent.variablesReference, scopeContent);
+        return scopeContent;
+    }
+
+    private populateVariables(scope: ScopeContent, stingrayTableValues: Array<any>) : void {
+        const variables = [];
+        for (let i = 0; i < stingrayTableValues.length; ++i) {
+            let tableValue = stingrayTableValues[i];
+            let varName = tableValue.var_name || tableValue.key;
+            if (varName === "(*temporary)")
+                continue;
+            if (tableValue.value === "C function")
+                continue;
+
+            let displayName = tableValue.key;
+            let value = tableValue.value;
+            let type = tableValue.type;
+            if (tableValue.type === 'table') {
+                let tableItems = value.split('\n');
+                let tableScopeContent = this.createScopeContent(scope.frameId, scope.scopeId);
+                tableScopeContent.tableVarName = scope.tableVarName || varName;
+                if (!scope.tablePath) {
+                    tableScopeContent.tablePath = [];
+                } else {
+                    tableScopeContent.tablePath = scope.tablePath.concat([i + 1]);
+                }
+
+                variables.push({
+                    name: varName,
+                    type: type,
+                    value: "{table}",
+                    namedVariables: tableItems.length,
+                    variablesReference: tableScopeContent.variablesReference,
+                    tableIndex: i
+                });
+            } else {
+                variables.push({
+                    name: varName,
+                    type: type,
+                    value: value,
+                    variablesReference: 0,
+                    tableIndex: i
+                });
+            }
+        }
+        scope.variables = variables;
+    }
+
+    private fetchScopeData(scopeContent: ScopeContent) : Promise<any> {
+        if (scopeContent.dataReady()) {
+            return Promise.resolve(scopeContent);
+        }
+
+        return this.sendDebuggerRequest('expand_table', {
+            local_num: 0,
+            table_path: {
+                level: scopeContent.frameId,
+                local: scopeContent.tableVarName,
+                path: scopeContent.tablePath
+            }
+        }, 'node_index').then(result => {
+            let message = result[0];
+            let tableValues = message.table !== 'nil' ? message.table : [];
+            this.populateVariables(scopeContent, tableValues);
+        });
     }
 }
 
