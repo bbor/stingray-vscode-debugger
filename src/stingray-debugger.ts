@@ -240,7 +240,7 @@ class StingrayDebugSession extends DebugSession {
             // TODO: Try connection multiple time until timeout.
             setTimeout(() => this.connectToEngine(engineProcess.ip, engineProcess.port, response), 1000);
         }).catch(err => {
-            return this.sendErrorResponse(response, 3001, err);
+            return this.sendErrorResponse(response, 3001, "Failed to launch engine. "+ (err.message || err));
         });
     }
 

@@ -1,9 +1,11 @@
+import * as vscode from 'vscode';
 import {ConsoleConnection} from './console-connection';
 
 let _connectionPort = 0;
 let _connectionIp = "";
 let _sharedConnection: ConsoleConnection = null;
 let _currentConnectionPromise: Promise<ConsoleConnection> = null;
+let _connectionOutputChannel:vscode.OutputChannel = vscode.window.createOutputChannel("Engine Connection");
 
 /**
  * Configure the shared engine connection settings.
@@ -26,6 +28,9 @@ export function isValid() {
 	return _connectionPort > 0 && _connectionIp;
 }
 
+/**
+ * Close the shared connection and reset its state.
+ */
 export function close () {
 	if (_sharedConnection && _sharedConnection.isReady())
 		_sharedConnection.close();
@@ -33,6 +38,9 @@ export function close () {
 	_currentConnectionPromise = null;
 }
 
+/**
+ * Get or connect the shared connection.
+ */
 export function get () {
 	if (_currentConnectionPromise)
 		return _currentConnectionPromise;
@@ -48,9 +56,20 @@ export function get () {
 		_sharedConnection.onOpen(() => {
 			errorInitOff();
 			resolve(_sharedConnection);
+			_sharedConnection.onMessage(onSharedConnectionMessages);
 			_sharedConnection.onClose(close);
 			_sharedConnection.onError(close);
 		});
 	});
 	return _currentConnectionPromise;
+}
+
+function onSharedConnectionMessages(e) {
+	if (e.type !== 'message')
+		return;
+
+	if (e.system) {
+		let engineMessage = `[${e.level.toUpperCase()}] ${e.system} / ${e.message}\r\n`;
+		_connectionOutputChannel.appendLine(engineMessage);
+	}
 }
