@@ -223,6 +223,11 @@ class StingrayDebugSession extends DebugSession {
             // Tell the user what we are launching.
             this.sendEvent(new OutputEvent(`Launching ${engineProcess.cmdline}`));
 
+            // Add some map folder sources:
+            let coreMapFolder = path.join(toolchainPath, 'core');
+            if (fileExists(coreMapFolder))
+                this._projectFolderMaps["core"] = path.dirname(coreMapFolder);
+
             // Wait for engine to start successfully, hopefully one second should be enough.
             // TODO: Try connection multiple time until timeout.
             setTimeout(() => this.connectToEngine(engineProcess.ip, engineProcess.port, response), 1000);
@@ -368,13 +373,11 @@ class StingrayDebugSession extends DebugSession {
             let name = frame.function ? `${frame.function} @ ${resourcePath}:${frame.line}` :
                                         `${resourcePath}:${frame.line}`;
             let filePath = this.getResourceFilePath(frame.source);
-            if (!fileExists(filePath))
-                return this.sendResponse(response);
-
-            frames.push(new StackFrame(i++, `${name}(${i})`,
-                new Source(frame.source, filePath),
-                frame.line, 0
-            ));
+            if (fileExists(filePath)) {
+                frames.push(new StackFrame(i++, name, new Source(frame.source, filePath), frame.line, 0));
+            } else {
+                frames.push(new StackFrame(i++, `${name} (Cannot find source in workspace)`));
+            }
         }
         response.body = {
             stackFrames: frames,
