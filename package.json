@@ -60,6 +60,17 @@
         "onCommand:extension.stingray-debug.provideInitialConfigurations"
     ],
     "contributes": {
+        "configuration": {
+            "type": "object",
+            "title": "Stingray configuration",
+            "properties": {
+                "stingray.toolchain": {
+                    "type": "string",
+                    "default": "${env.SR_BIN_DIR}",
+                    "description": "Stingray toolchain installation folder, i.e. C:/Program Files/Autodesk/Stingray"
+                }
+            }
+        },
         "commands": [
             {
                 "command": "extension.stingray-debug.run-command",
