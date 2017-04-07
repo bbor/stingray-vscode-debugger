@@ -168,9 +168,7 @@
         ],
         "configurationAttributes": {
           "launch": {
-            "required": [
-              "toolchain"
-            ],
+            "required": ["toolchain", "project_file"],
             "properties": {
               "toolchain": {
                 "type": "string",
@@ -179,6 +177,10 @@
               "project_file": {
                 "type": "string",
                 "description": "Stingray project settings file path (i.e. *.stingray_project)"
+              },
+              "compile": {
+                "type": "boolean",
+                "description": "Will compile the project before launching it"
               },
               "command_line_args": {
                 "type": "array",

@@ -34,9 +34,11 @@ export interface AttachRequestArguments extends DebugProtocol.LaunchRequestArgum
  */
 export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
     /** Stingray binary folder */
-    toolchain?: string;
+    toolchain: string;
     /** Project settings file path */
-    project_file?: string;
+    project_file: string;
+    /** If set, the project will be compiled before being launched. */
+    compile?: boolean;
     /** Additional argument fields to be used for debugging */
     command_line_args?: Array<string>;
 }
@@ -218,7 +220,7 @@ class StingrayDebugSession extends DebugSession {
         try {
             // Launch engine
             let launcher = new StingrayLauncher(toolchainPath, projectFilePath)
-            let engineProcess = launcher.start();
+            let engineProcess = launcher.start(args.compile);
 
             // Tell the user what we are launching.
             this.sendEvent(new OutputEvent(`Launching ${engineProcess.cmdline}`));
@@ -553,7 +555,7 @@ class StingrayDebugSession extends DebugSession {
      */
     private on_engine_message(e: EngineEvent, data: ArrayBuffer = null) {
         if (e.system) {
-            let engineMessage = `[${e.level.toUpperCase()}] ${e.system} / ${e.message}`;
+            let engineMessage = `[${e.level.toUpperCase()}] ${e.system} / ${e.message}\r\n`;
             this.sendEvent(new OutputEvent(engineMessage));
         } else if (e.message_type === 'command_output') {
             let result = '< ' + e.message;
@@ -562,7 +564,7 @@ class StingrayDebugSession extends DebugSession {
                 this.sendResponse(this._lastEvalResponse);
                 this._lastEvalResponse = null;
             } else {
-                this.sendEvent(new OutputEvent(result));
+                this.sendEvent(new OutputEvent(result + '\r\n'));
             }
         }
     }
@@ -571,7 +573,7 @@ class StingrayDebugSession extends DebugSession {
      * Handle engine lua debugging messages.
      */
     private on_engine_lua_debugger(e: EngineEvent, data: ArrayBuffer = null) {
-        this.sendEvent(new OutputEvent(`Debugger status: ${e.message}`));
+        this.sendEvent(new OutputEvent(`Debugger status: ${e.message}\r\n`));
 
         if (this._initializing) {
             // Since we now know the state of the engine, lets proceed with the client initialization.

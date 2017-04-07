@@ -39,6 +39,8 @@ export class StingrayEngineProcess {
 
 export class StingrayLauncher {
     private dataDir: string;
+    private sourceDir: string;
+    private coreRootDir: string;
     private srpPath: any;
     private tcPath: string;
 
@@ -52,6 +54,7 @@ export class StingrayLauncher {
 
         this.tcPath = tcPath;
         this.srpPath = srpPath;
+        this.coreRootDir = tcPath;
 
         // Read project settings to get data dir
         let srpSJSON = readFile(this.srpPath, 'utf8');
@@ -68,17 +71,34 @@ export class StingrayLauncher {
         } else
             this.dataDir = path.join(srpDir, "..", srpDirName + "_data");
 
+        if (srp.source_directory) {
+            this.sourceDir = path.join(srpDir, srp.source_directory);
+        } else
+            this.sourceDir = srpDir;
+
         // Add platform to data dir, default to `win32` for now.
         this.dataDir = path.join(this.dataDir, 'win32');
+
+        this.sourceDir = this.sourceDir.replace(/^[\/\\]|[\/\\]$/g, '');
+        this.dataDir = this.dataDir.replace(/^[\/\\]|[\/\\]$/g, '');
+        this.coreRootDir = this.coreRootDir.replace(/^[\/\\]|[\/\\]$/g, '');
     }
 
-    public start (): StingrayEngineProcess {
+    public start (compile: boolean): StingrayEngineProcess {
         let engineExe = path.join(this.tcPath, 'engine', 'win64', 'dev', 'stingray_win64_dev.exe');
         let engineProcess = new StingrayEngineProcess(engineExe);
-        engineProcess.start([
+        let engineArgs = [
+            "--source-dir", `"${this.sourceDir}"`,
+            "--map-source-dir", "core", `"${this.coreRootDir}"`,
             "--data-dir", `"${this.dataDir}"`,
             "--wait-for-debugger",
-        ], DEFAULT_ENGINE_CONSOLE_PORT);
+        ];
+        if (compile) {
+            engineArgs.push("--silent-mode");
+            engineArgs.push("--compile");
+            engineArgs.push("--continue");
+        }
+        engineProcess.start(engineArgs, DEFAULT_ENGINE_CONSOLE_PORT);
 
         return engineProcess;
     }
