@@ -17,6 +17,7 @@ import {ConsoleConnection} from './console-connection';
 import {StingrayLauncher} from './stingray-launcher';
 import * as helpers from './helpers';
 import {luaHelpers} from './engine-snippets';
+import * as Globals from './globals';
 
 /**
  * This interface should always match the schema found in the stingray-debug extension manifest.
@@ -199,6 +200,7 @@ class StingrayDebugSession extends DebugSession {
      */
     protected connectToEngine(ip: string, port: number, response: DebugProtocol.Response): ConsoleConnection {
         this._conn = new ConsoleConnection(ip, port);
+        Globals.setDebuggerConnection(this._conn);
 
         // Bind connection callbacks
         this._conn.onOpen(this.onEngineConnectionOpened.bind(this, response));
@@ -248,6 +250,7 @@ class StingrayDebugSession extends DebugSession {
         // Close the engine connection
         this._conn.close();
         this._conn = null;
+        Globals.setDebuggerConnection(null);
 
         // Proceed with disconnection
         this.sendResponse(response);
@@ -660,6 +663,7 @@ class StingrayDebugSession extends DebugSession {
      */
     private onEngineConnectionClosed() {
         this._conn = null;
+        Globals.setDebuggerConnection(null);
         this.sendEvent(new TerminatedEvent());
     }
 
@@ -673,6 +677,7 @@ class StingrayDebugSession extends DebugSession {
         if (this._conn)
             this._conn.close();
         this._conn = null;
+        Globals.setDebuggerConnection(null);
     }
 
     //---- Implementation

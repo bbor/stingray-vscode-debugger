@@ -54,10 +54,16 @@
   },
   "main": "./out/extension",
   "activationEvents": [
+    "onCommand:extension-stingray-debug.start-debug-session",
+    "onCommand:extension.stingray-debug.run-command",
     "onCommand:extension.stingray-debug.getProgramName",
     "onCommand:extension.stingray-debug.provideInitialConfigurations"
   ],
   "contributes": {
+    "commands": [{
+      "command": "extension.stingray-debug.run-command",
+      "title": "Stingray Command"
+    }],
     "languages": [
       {
         "id": "sjson",
@@ -121,6 +127,7 @@
         "label": "Stingray",
         "program": "./out/stingray-debugger.js",
         "runtime": "node",
+        "startSessionCommand": "extension-stingray-debug.start-debug-session",
         "variables": {
           "AskForProgramName": "extension.stingray-debug.getProgramName"
         },

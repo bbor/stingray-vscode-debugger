@@ -58,7 +58,12 @@ export class ConsoleConnection {
     }
 
     close () {
+        this._onMessageCallbacks = [];
+        this._onOpenCallbacks = [];
+        this._onCloseCallbacks = [];
+        this._onErrorCallbacks = [];
         this._ws.close();
+        this._ws = undefined;
     }
 
     onOpen (callback) {
