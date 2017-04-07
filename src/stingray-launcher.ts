@@ -21,19 +21,25 @@ export class StingrayEngineProcess {
         this.ip = '127.0.0.1';
         this.port = DEFAULT_ENGINE_CONSOLE_PORT;
         this.exePath = exePath;
-        if (!fileExists(this.exePath))
-            throw new Error(`Invalid engine executable path ${this.exePath}`);
+    }
+
+    static run (exePath:string, args:Array<string|number> = []) {
+        if (!fileExists(exePath))
+            throw new Error(`Invalid engine executable path ${exePath}`);
+        return new Promise((resolve, reject) => {
+            let cmdline = `"${exePath}" ${args.join(' ')}`;
+            exec(cmdline, (error, stdout, stderr) => {
+                if (error)
+                    return reject(error);
+                resolve();
+            });
+        });
     }
 
     start (args:Array<string|number> = [], port: number = DEFAULT_ENGINE_CONSOLE_PORT) {
-        args = args.concat([
-            "--port", port
-        ]);
         this.port = port;
         this.cmdline = `"${this.exePath}" ${args.join(' ')}`;
-        exec(this.cmdline, (error, stdout, stderr) => {
-            // result
-        });
+        return StingrayEngineProcess.run(this.exePath, args.concat(["--port", port]));
     }
 }
 
@@ -84,22 +90,30 @@ export class StingrayLauncher {
         this.coreRootDir = this.coreRootDir.replace(/^[\/\\]|[\/\\]$/g, '');
     }
 
-    public start (compile: boolean): StingrayEngineProcess {
+    public start (compile: boolean): Promise<StingrayEngineProcess> {
         let engineExe = path.join(this.tcPath, 'engine', 'win64', 'dev', 'stingray_win64_dev.exe');
         let engineProcess = new StingrayEngineProcess(engineExe);
-        let engineArgs = [
-            "--source-dir", `"${this.sourceDir}"`,
-            "--map-source-dir", "core", `"${this.coreRootDir}"`,
-            "--data-dir", `"${this.dataDir}"`,
-            "--wait-for-debugger",
-        ];
+        let compilePromise = Promise.resolve();
         if (compile) {
-            engineArgs.push("--silent-mode");
-            engineArgs.push("--compile");
-            engineArgs.push("--continue");
+            let engineArgs = [
+                "--compile",
+                "--source-dir", `"${this.sourceDir}"`,
+                "--map-source-dir", "core", `"${this.coreRootDir}"`,
+                "--data-dir", `"${this.dataDir}"`,
+                "--port 14999"
+            ];
+            compilePromise = StingrayEngineProcess.run(engineExe, engineArgs);
         }
-        engineProcess.start(engineArgs, DEFAULT_ENGINE_CONSOLE_PORT);
 
-        return engineProcess;
+        return compilePromise.then(() => {
+            let engineArgs = [
+                "--source-dir", `"${this.sourceDir}"`,
+                "--map-source-dir", "core", `"${this.coreRootDir}"`,
+                "--data-dir", `"${this.dataDir}"`,
+                "--wait-for-debugger"
+            ];
+            engineProcess.start(engineArgs, DEFAULT_ENGINE_CONSOLE_PORT);
+            return engineProcess;
+        });
     }
 }

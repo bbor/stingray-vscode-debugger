@@ -17,7 +17,6 @@ import {ConsoleConnection} from './console-connection';
 import {StingrayLauncher} from './stingray-launcher';
 import * as helpers from './helpers';
 import {luaHelpers} from './engine-snippets';
-import * as Globals from './globals';
 
 /**
  * This interface should always match the schema found in the stingray-debug extension manifest.
@@ -202,7 +201,6 @@ class StingrayDebugSession extends DebugSession {
      */
     protected connectToEngine(ip: string, port: number, response: DebugProtocol.Response): ConsoleConnection {
         this._conn = new ConsoleConnection(ip, port);
-        Globals.setDebuggerConnection(this._conn);
 
         // Bind connection callbacks
         this._conn.onOpen(this.onEngineConnectionOpened.bind(this, response));
@@ -217,11 +215,16 @@ class StingrayDebugSession extends DebugSession {
     protected launchRequest(response: DebugProtocol.LaunchResponse, args: LaunchRequestArguments): void {
         let toolchainPath = args.toolchain;
         let projectFilePath = args.project_file;
-        try {
-            // Launch engine
-            let launcher = new StingrayLauncher(toolchainPath, projectFilePath)
-            let engineProcess = launcher.start(args.compile);
-
+        // Launch engine
+        let launcher = new StingrayLauncher(toolchainPath, projectFilePath)
+        if (args.compile) {
+            this.sendEvent(new OutputEvent(`Compiling data...`));
+            setTimeout(() => {
+                let compilerConnection = new ConsoleConnection("127.0.0.1", 14999);
+                compilerConnection.onMessage(this.onEngineMessageReceived.bind(this));
+            }, 1000);
+        }
+        launcher.start(args.compile).then(engineProcess => {
             // Tell the user what we are launching.
             this.sendEvent(new OutputEvent(`Launching ${engineProcess.cmdline}`));
 
@@ -233,9 +236,9 @@ class StingrayDebugSession extends DebugSession {
             // Wait for engine to start successfully, hopefully one second should be enough.
             // TODO: Try connection multiple time until timeout.
             setTimeout(() => this.connectToEngine(engineProcess.ip, engineProcess.port, response), 1000);
-        } catch (err) {
-            return this.sendErrorResponse(response, 3001, err.message);
-        }
+        }).catch(err => {
+            return this.sendErrorResponse(response, 3001, err);
+        });
     }
 
     /**
@@ -257,7 +260,6 @@ class StingrayDebugSession extends DebugSession {
         // Close the engine connection
         this._conn.close();
         this._conn = null;
-        Globals.setDebuggerConnection(null);
 
         // Proceed with disconnection
         this.sendResponse(response);
@@ -668,7 +670,6 @@ class StingrayDebugSession extends DebugSession {
      */
     private onEngineConnectionClosed() {
         this._conn = null;
-        Globals.setDebuggerConnection(null);
         this.sendEvent(new TerminatedEvent());
     }
 
@@ -682,7 +683,6 @@ class StingrayDebugSession extends DebugSession {
         if (this._conn)
             this._conn.close();
         this._conn = null;
-        Globals.setDebuggerConnection(null);
     }
 
     //---- Implementation
