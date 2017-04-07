@@ -14,7 +14,7 @@ import {readFileSync, existsSync as fileExists} from 'fs';
 import * as fs from 'fs';
 import * as path from 'path';
 import {ConsoleConnection} from './console-connection';
-import {StingrayLauncher} from './stingray-launcher';
+import {EngineLauncher} from './launcher';
 import * as helpers from './helpers';
 import {luaHelpers} from './engine-snippets';
 
@@ -216,7 +216,7 @@ class StingrayDebugSession extends DebugSession {
         let toolchainPath = args.toolchain;
         let projectFilePath = args.project_file;
         // Launch engine
-        let launcher = new StingrayLauncher(toolchainPath, projectFilePath)
+        let launcher = new EngineLauncher(toolchainPath, projectFilePath)
         if (args.compile) {
             this.sendEvent(new OutputEvent(`Compiling data...`));
             setTimeout(() => {
