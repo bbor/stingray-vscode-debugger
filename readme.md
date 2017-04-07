@@ -1,4 +1,14 @@
-# Stingray Debugger - VSCode Debugger Extension
+# Stingray Debugger
+
+Extension can be found at <https://marketplace.visualstudio.com/items?itemName=jschmidt42.stingray-debug>
+
+## 1.2.0 (New features and bug fixes)
+* Engine commands are now evaluated with `--` prefix instead of `#`.
+* Callstack still get evaluated even if the source file cannot be found.
+* Mapping toolchain core folder if available.
+* You can now send engine commands using the `Stingray Command` in the command palette.
+
+## Description
 
 This is a Visual Studio Code extension to debug [Stingray](http://www.stingrayengine.com)
 application and games written in lua.
@@ -128,15 +138,17 @@ The debugger restart button will reboot the engine, reloading/refreshing all res
 
 ### Send engine commands
 
-You can send engine commands to the engine by prefixing those commands with `#` in the debug conole REPL.
+You can send engine commands to the engine by prefixing those commands with `--` in the debug conole REPL.
 
 You can find available console commands here <http://help.autodesk.com/view/Stingray/ENU/?guid=__stingray_help_reference_console_commands_html>
 
 ![engine commands](https://cloud.githubusercontent.com/assets/4054655/24309894/005f09f4-10a4-11e7-9ff4-1e051381fdbe.gif)
 
+You can also use the `Stingray Command` in the command palette to send an engine command.
+
 ### Send engine scripts
 
-Also, everything you type that is **not** prefixed with `#` will be evaluated as lua script.
+Also, everything you type that is **not** prefixed with `--` will be evaluated as lua script.
 
 ![engine scripts](https://cloud.githubusercontent.com/assets/4054655/24311675/96443884-10ab-11e7-8b07-2fdc77c279aa.gif)
 

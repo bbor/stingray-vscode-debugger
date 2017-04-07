@@ -2,7 +2,7 @@
   "name": "stingray-debug",
   "displayName": "Stingray Debugger",
   "version": "1.2.0",
-  "description": "Extension to debug Autodesk Stingray application and games.",
+  "description": "Extension to debug Autodesk Stingray applications and games.",
   "license": "MIT",
   "author": {
     "url": "https://github.com/jschmidt42",
