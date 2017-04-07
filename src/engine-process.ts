@@ -8,12 +8,12 @@ import child_process = require('child_process');
 var exec = child_process.exec;
 
 export const DEFAULT_ENGINE_CONSOLE_PORT = 14000;
+export const DEFAULT_COMPILER_CONSOLE_PORT = 14999;
 
 export class EngineProcess {
     public ip: string;
     public port: number;
     public cmdline: string;
-
     public exePath: string;
 
     constructor (exePath: string) {

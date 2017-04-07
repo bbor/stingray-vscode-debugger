@@ -1,7 +1,7 @@
 {
     "name": "stingray-debug",
     "displayName": "Stingray Debugger",
-    "version": "1.4.0",
+    "version": "1.4.1",
     "description": "Extension to debug Autodesk Stingray applications and games.",
     "license": "MIT",
     "author": {
@@ -56,6 +56,8 @@
     "activationEvents": [
         "onCommand:extension-stingray-debug.start-debug-session",
         "onCommand:extension.stingray-debug.run-command",
+        "onCommand:extension.stingray-debug.run-compile",
+        "onCommand:extension.stingray-debug.refresh-engine",
         "onCommand:extension.stingray-debug.getProgramName",
         "onCommand:extension.stingray-debug.provideInitialConfigurations"
     ],
@@ -64,6 +66,14 @@
             {
                 "command": "extension.stingray-debug.run-command",
                 "title": "Stingray Command"
+            },
+            {
+                "command": "extension.stingray-debug.run-compile",
+                "title": "Stingray Compile"
+            },
+            {
+                "command": "extension.stingray-debug.refresh-engine",
+                "title": "Stingray Refresh"
             }
         ],
         "languages": [

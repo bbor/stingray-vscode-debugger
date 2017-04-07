@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import SJSON = require('simplified-json');
 import {readFileSync as readFile, existsSync as fileExists} from 'fs';
-import {EngineProcess, DEFAULT_ENGINE_CONSOLE_PORT} from './engine-process';
+import {EngineProcess, DEFAULT_ENGINE_CONSOLE_PORT, DEFAULT_COMPILER_CONSOLE_PORT} from './engine-process';
 
 export class EngineLauncher {
     private dataDir: string;
@@ -12,6 +12,7 @@ export class EngineLauncher {
     private coreRootDir: string;
     private srpPath: any;
     private tcPath: string;
+    private engineExe: string;
 
     constructor (tcPath: string, srpPath: string) {
 
@@ -51,23 +52,15 @@ export class EngineLauncher {
         this.sourceDir = this.sourceDir.replace(/^[\/\\]|[\/\\]$/g, '');
         this.dataDir = this.dataDir.replace(/^[\/\\]|[\/\\]$/g, '');
         this.coreRootDir = this.coreRootDir.replace(/^[\/\\]|[\/\\]$/g, '');
+
+        this.engineExe = path.join(this.tcPath, 'engine', 'win64', 'dev', 'stingray_win64_dev.exe');
     }
 
     public start (compile: boolean): Promise<EngineProcess> {
-        let engineExe = path.join(this.tcPath, 'engine', 'win64', 'dev', 'stingray_win64_dev.exe');
-        let engineProcess = new EngineProcess(engineExe);
+        let engineProcess = new EngineProcess(this.engineExe);
         let compilePromise = Promise.resolve();
-        if (compile) {
-            let engineArgs = [
-                "--compile",
-                "--source-dir", `"${this.sourceDir}"`,
-                "--map-source-dir", "core", `"${this.coreRootDir}"`,
-                "--data-dir", `"${this.dataDir}"`,
-                "--port 14999"
-            ];
-            compilePromise = EngineProcess.run(engineExe, engineArgs);
-        }
-
+        if (compile)
+            compilePromise = this.compile();
         return compilePromise.then(() => {
             let engineArgs = [
                 "--source-dir", `"${this.sourceDir}"`,
@@ -78,5 +71,16 @@ export class EngineLauncher {
             engineProcess.start(engineArgs, DEFAULT_ENGINE_CONSOLE_PORT);
             return engineProcess;
         });
+    }
+
+    public compile() {
+        let engineArgs = [
+            "--compile",
+            "--source-dir", `"${this.sourceDir}"`,
+            "--map-source-dir", "core", `"${this.coreRootDir}"`,
+            "--data-dir", `"${this.dataDir}"`,
+            "--port", DEFAULT_COMPILER_CONSOLE_PORT
+        ];
+        return EngineProcess.run(this.engineExe, engineArgs);
     }
 }

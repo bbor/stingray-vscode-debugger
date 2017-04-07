@@ -2,7 +2,7 @@
 
 Extension can be found at <https://marketplace.visualstudio.com/items?itemName=jschmidt42.stingray-debug>
 
-## 1.3.0 (New features and bug fixes)
+## 1.4.1 (New features and bug fixes)
 * Add launch options `compile:boolean` in order to compile project before launching it.
 * Engine commands are now evaluated with `--` prefix instead of `#`.
 * Callstack still get evaluated even if the source file cannot be found.
