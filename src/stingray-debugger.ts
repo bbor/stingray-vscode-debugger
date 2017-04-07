@@ -1,9 +1,6 @@
 /**
  * Stingray Visual Studio Code Debugger
  * NOTE: Debugging protocal interfaces: https://github.com/Microsoft/vscode-debugadapter-node/blob/master/protocol/src/debugProtocol.ts
- *
- * FIXME: Close debug session when engine is killed or closed.
- * FIXME: Kill the launched instance when shutting down the debug session.
  */
 import {
     Logger,
@@ -18,29 +15,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {ConsoleConnection} from './console-connection';
 import {StingrayLauncher} from './stingray-launcher';
-
-function findFiles (startPath, filter, recurse = false, items = []) {
-
-    items = items || [];
-
-    if (!fs.existsSync(startPath)){
-        return items;
-    }
-
-    var files=fs.readdirSync(startPath);
-    for(var i=0;i<files.length;i++) {
-        var filename=path.join(startPath,files[i]);
-        var stat = fs.lstatSync(filename);
-        if (stat.isDirectory()) {
-            if (recurse) {
-                findFiles(filename, filter, recurse, items);
-            }
-        } else if (filename.indexOf(filter)>=0)
-            items.push(filename);
-    };
-
-    return items;
-};
+import * as helpers from './helpers';
+import {luaHelpers} from './engine-snippets';
 
 /**
  * This interface should always match the schema found in the stingray-debug extension manifest.
@@ -63,77 +39,6 @@ export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArgum
     /** Additional argument fields to be used for debugging */
     command_line_args?: Array<string>;
 }
-
-/**
- * Lua helpers that get injected int the debuggee runtime.
- */
-const luaHelpers = [
-    `
-    if not to_console_string then
-        function to_console_string(x)
-            local function comp(a,b)
-                if  type(a) ~= type(b) then
-                    return type(a) < type(b)
-                else
-                    return a < b
-                end
-            end
-
-            if type(x) == 'table' then
-                local keys = {}
-                for k,_ in pairs(x) do
-                    keys[#keys+1] = k
-                end
-                table.sort(keys, comp)
-                local s = ''
-                for i,k in ipairs(keys) do
-                    if type(x[k]) == 'string' then
-                        s = s .. string.format('%-20s  %q\\n', tostring(k), x[k])
-                    else
-                        s = s .. string.format('%-20s  %s\\n', tostring(k), tostring(x[k]))
-                    end
-                end
-                return s
-            elseif type(x) == 'function' then
-                local info = debug.getinfo(x)
-                if info.what == 'C' then
-                    return 'C function'
-                else
-                    return 'Lua function, ' .. info.short_src .. ':' .. info.linedefined
-                end
-                return to_console_string(info)
-            else
-                return tostring(x)
-            end
-        end
-    end
-    `,
-    `
-    if not send_script_output then
-        function send_script_output(result, requestId)
-            local msg = {type = 'script_output'}
-            msg.result = result
-            msg.result_type = type(result)
-            msg.requestId = requestId
-            stingray.Application.console_send(msg);
-        end
-    end
-    `,
-    `
-    if not evaluate_script_expression then
-        function evaluate_script_expression(expression, requestId)
-            local script = loadstring(expression)
-            if script == nil then
-                script = loadstring("return " .. expression)
-            end
-            if script then
-                local result = script()
-                send_script_output(result, requestId)
-            end
-        end
-    end
-    `
-]
 
 /**
  * Engine debug message.
@@ -198,31 +103,6 @@ class ScopeContent {
             tablePath: ${path}
         ]`;
     }
-}
-
-function isPotentialIdentifier (str: string) {
-    const format = /[&*()+\-=\[\]{}':"\\|,\/]/;
-    return !format.test(str);
-}
-
-function stringToTypedValue(luaType: string, strValue: string) : any {
-    if (luaType === 'string') {
-        return strValue;
-    }
-
-    if (luaType === 'boolean') {
-        return strValue === 'true';
-    }
-
-    if (luaType === 'number') {
-        return Number(strValue);
-    }
-
-    if (luaType === 'table') {
-        return [];
-    }
-
-    throw new Error('unsupported type');
 }
 
 class StingrayDebugSession extends DebugSession {
@@ -410,7 +290,7 @@ class StingrayDebugSession extends DebugSession {
                 break;
             }
 
-            let projectFilePath = _.first(findFiles(dirPath, '.stingray_project'));
+            let projectFilePath = _.first(helpers.findFiles(dirPath, '.stingray_project'));
             if (projectFilePath && fileExists(projectFilePath)) {
                 resourcePath = path.relative(dirPath, filePath);
                 this._projectFolderMaps["<project>"] = dirPath;
@@ -593,9 +473,9 @@ class StingrayDebugSession extends DebugSession {
      * Evaluate engine commands and lua scripts
      */
     protected evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): void {
-        if (args.context === 'repl' && args.expression[0] === '#') {
+        if (args.context === 'repl' && args.expression.indexOf('--') === 0) {
             // Forward the expression as an engine command.
-            let command = args.expression.slice(1).split(' ');
+            let command = args.expression.slice(2).split(' ');
             this._lastEvalResponse = response;
             this._conn.sendCommand(command[0], ...command.slice(1));
         } else if (args.context === 'repl') {
@@ -627,7 +507,7 @@ class StingrayDebugSession extends DebugSession {
             throw new Error('Cannot find variable ' + args.name);
         }
 
-        let newValue = stringToTypedValue(variable.type, args.value);
+        let newValue = helpers.stringToTypedValue(variable.type, args.value);
 
         this.sendDebuggerRequest('modify_variable', {
             local_num: 0,
@@ -870,7 +750,7 @@ class StingrayDebugSession extends DebugSession {
      * @param expression
      */
     private evaluateExpression(response: DebugProtocol.EvaluateResponse, expression: string) {
-        if (!isPotentialIdentifier(expression)) {
+        if (!helpers.isPotentialIdentifier(expression)) {
             return this.evaluateLuaSnippet(response, expression);
         }
 
