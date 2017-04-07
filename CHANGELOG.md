@@ -1,3 +1,6 @@
+## 1.3.0
+* Add launch options `compile:boolean` in order to compile project before launching it.
+
 ## 1.2.0
 * Engine commands are now evaluated with `--` prefix instead of `#`.
 * Callstack still get evaluated even if the source file cannot be found.

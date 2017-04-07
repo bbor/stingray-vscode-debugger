@@ -228,6 +228,9 @@ class StingrayDebugSession extends DebugSession {
             // Tell the user what we are launching.
             this.sendEvent(new OutputEvent(`Launching ${engineProcess.cmdline}`));
 
+            // Set startup project root to resolve scripts.
+            this._projectFolderMaps["<project>"] = path.dirname(projectFilePath);
+
             // Add some map folder sources:
             let coreMapFolder = path.join(toolchainPath, 'core');
             if (fileExists(coreMapFolder))
@@ -575,8 +578,6 @@ class StingrayDebugSession extends DebugSession {
      * Handle engine lua debugging messages.
      */
     private on_engine_lua_debugger(e: EngineEvent, data: ArrayBuffer = null) {
-        this.sendEvent(new OutputEvent(`Debugger status: ${e.message}\r\n`));
-
         if (this._initializing) {
             // Since we now know the state of the engine, lets proceed with the client initialization.
             this.sendEvent(new InitializedEvent());
