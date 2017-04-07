@@ -2,48 +2,11 @@
 import _ = require('lodash');
 import * as path from 'path';
 import * as fs from 'fs';
-import {readFileSync as readFile, existsSync as fileExists} from 'fs';
-import child_process = require('child_process');
 import SJSON = require('simplified-json');
+import {readFileSync as readFile, existsSync as fileExists} from 'fs';
+import {EngineProcess, DEFAULT_ENGINE_CONSOLE_PORT} from './engine-process';
 
-var exec = child_process.exec;
-
-export const DEFAULT_ENGINE_CONSOLE_PORT = 14000;
-
-export class StingrayEngineProcess {
-    public ip: string;
-    public port: number;
-    public cmdline: string;
-
-    public exePath: string;
-
-    constructor (exePath: string) {
-        this.ip = '127.0.0.1';
-        this.port = DEFAULT_ENGINE_CONSOLE_PORT;
-        this.exePath = exePath;
-    }
-
-    static run (exePath:string, args:Array<string|number> = []) {
-        if (!fileExists(exePath))
-            throw new Error(`Invalid engine executable path ${exePath}`);
-        return new Promise((resolve, reject) => {
-            let cmdline = `"${exePath}" ${args.join(' ')}`;
-            exec(cmdline, (error, stdout, stderr) => {
-                if (error)
-                    return reject(error);
-                resolve();
-            });
-        });
-    }
-
-    start (args:Array<string|number> = [], port: number = DEFAULT_ENGINE_CONSOLE_PORT) {
-        this.port = port;
-        this.cmdline = `"${this.exePath}" ${args.join(' ')}`;
-        return StingrayEngineProcess.run(this.exePath, args.concat(["--port", port]));
-    }
-}
-
-export class StingrayLauncher {
+export class EngineLauncher {
     private dataDir: string;
     private sourceDir: string;
     private coreRootDir: string;
@@ -90,9 +53,9 @@ export class StingrayLauncher {
         this.coreRootDir = this.coreRootDir.replace(/^[\/\\]|[\/\\]$/g, '');
     }
 
-    public start (compile: boolean): Promise<StingrayEngineProcess> {
+    public start (compile: boolean): Promise<EngineProcess> {
         let engineExe = path.join(this.tcPath, 'engine', 'win64', 'dev', 'stingray_win64_dev.exe');
-        let engineProcess = new StingrayEngineProcess(engineExe);
+        let engineProcess = new EngineProcess(engineExe);
         let compilePromise = Promise.resolve();
         if (compile) {
             let engineArgs = [
@@ -102,7 +65,7 @@ export class StingrayLauncher {
                 "--data-dir", `"${this.dataDir}"`,
                 "--port 14999"
             ];
-            compilePromise = StingrayEngineProcess.run(engineExe, engineArgs);
+            compilePromise = EngineProcess.run(engineExe, engineArgs);
         }
 
         return compilePromise.then(() => {
