@@ -1,7 +1,7 @@
 {
     "name": "stingray-debug",
     "displayName": "Stingray Debugger",
-    "version": "1.4.2",
+    "version": "1.4.4",
     "description": "Extension to debug Autodesk Stingray applications and games.",
     "license": "MIT",
     "author": {
@@ -47,7 +47,7 @@
         "vscode-debugadapter-testsupport": "^1.17.0"
     },
     "scripts": {
-        "prepare": "node ./node_modules/typescript/bin/tsc -p ./src",
+        "prepublish": "node ./node_modules/typescript/bin/tsc -p ./src",
         "compile": "node ./node_modules/typescript/bin/tsc -p ./src",
         "watch": "node ./node_modules/typescript/bin/tsc -w -p ./src",
         "postinstall": "node ./node_modules/vscode/bin/install"
