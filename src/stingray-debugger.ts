@@ -17,6 +17,7 @@ import {ConsoleConnection} from './console-connection';
 import {EngineLauncher} from './launcher';
 import * as helpers from './helpers';
 import {luaHelpers} from './engine-snippets';
+import {IdString} from './idString';
 
 /**
  * This interface should always match the schema found in the stingray-debug extension manifest.
@@ -155,6 +156,10 @@ class StingrayDebugSession extends DebugSession {
     // Pending promises for requests on the debugger
     private _requests: Map<number, any> = new Map<number, any>();
 
+    private _idStringSupport : boolean = false;
+
+    private _idStringMap : object;
+
     /**
      * Creates a new debug adapter that is used for one debug session.
      * We configure the default implementation of a debug adapter here.
@@ -165,6 +170,12 @@ class StingrayDebugSession extends DebugSession {
         // This debugger uses one-based lines and columns
         this.setDebuggerLinesStartAt1(true);
         this.setDebuggerColumnsStartAt1(true);
+
+        /*
+        // Where is the good place to init this? And where to get the project path?
+        let dummyPath = 'D:\\Auto\\Projects\\Workflows\\Character_project4\\Character_project4';
+        this.initIdString(dummyPath);
+        */
     }
 
     /**
@@ -180,7 +191,7 @@ class StingrayDebugSession extends DebugSession {
         response.body.supportsSetVariable = true;
 
         // TODO: not implemented yet.
-        // response.body.supportsCompletionsRequest = true;
+        response.body.supportsCompletionsRequest = true;
         // response.body.supportsGotoTargetsRequest = true;
 
         this.sendResponse(response);
@@ -486,13 +497,23 @@ class StingrayDebugSession extends DebugSession {
      * Evaluate engine commands and lua scripts
      */
     protected evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): void {
-        if (args.context === 'repl' && args.expression.indexOf('--') === 0) {
-            // Forward the expression as an engine command.
-            let command = args.expression.slice(2).split(' ');
-            this._lastEvalResponse = response;
-            this._conn.sendCommand(command[0], ...command.slice(1));
-        } else if (args.context === 'repl') {
-            this.evaluateExpression(response, args.expression);
+        if (args.context === 'repl') {
+            if (args.expression.indexOf('--') === 0) {
+                let command = args.expression.slice(2).split(' ');
+                this._lastEvalResponse = response;
+                this._conn.sendCommand(command[0], ...command.slice(1));
+            } else if (this._idStringSupport && this.isIdStringExpression(args.expression)) {
+                let str = this.evaluateIdString(args.expression);
+                response.body = {
+                    result: str,
+                    type: 'string',
+                    variablesReference: 0
+                };
+                this.sendResponse(response);
+
+            } else {
+                this.evaluateExpression(response, args.expression);
+            }
         } else if (args.context === 'hover') {
             let luaValueExpression = args.expression.replace(':', '.');
             this.evaluateExpression(response, luaValueExpression);
@@ -549,7 +570,8 @@ class StingrayDebugSession extends DebugSession {
     }
 
     protected completionsRequest(response: DebugProtocol.CompletionsResponse, args: DebugProtocol.CompletionsArguments): void {
-        // console.log('completionsRequest', args);
+        // Auto completion for console typing.
+        // console.log('completionsRequest debugger', args);
         this.sendResponse(response);
     }
 
@@ -723,6 +745,42 @@ class StingrayDebugSession extends DebugSession {
         this._conn.sendDebuggerCommand(command, data);
 
         return request.promise;
+    }
+
+    private initIdString(projectPath : string): void {
+        if (!fs.existsSync(projectPath) || fs.exists(path.join(projectPath, '.stingray_project'))) {
+            throw new Error("Project path doesn't exists or is invalid");
+        }
+
+        let projectName = path.basename(projectPath);
+        let projectRoot = path.dirname(projectPath);
+        let projectDataPath = path.join(projectRoot, projectName + '_data');
+        if (!fs.existsSync(projectDataPath)) {
+            throw new Error('Cannot find project data path:' + projectDataPath);
+        }
+
+        let idStringPath = path.join(projectDataPath, 'win32', 'strings.txt');
+        if (!fs.existsSync(idStringPath)) {
+            throw new Error('Cannot find id string file:' + idStringPath);
+        }
+
+        try {
+            let buffer = fs.readFileSync(idStringPath);
+            this._idStringMap = IdString.parse(buffer);
+            this._idStringSupport = true;
+        } catch(err) {
+            throw err;
+        }
+    }
+
+    private isIdStringExpression(expression: string) : boolean {
+        return expression.length > 0 && expression.indexOf('#ID[') === 0 && expression[expression.length - 1] === ']';
+    }
+
+    private evaluateIdString(expression: string) : string {
+        let idString = expression.substr(4, expression.length - 5);
+        let str = this._idStringMap[idString];
+        return str || `<unknwown> - ${idString}`;
     }
 
     /**

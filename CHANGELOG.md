@@ -1,3 +1,6 @@
+## 1.4.0
+* Auto completion for stingray API from official stingray documentation.
+
 ## 1.3.0
 * Add launch options `compile:boolean` in order to compile project before launching it.
 
@@ -18,21 +21,31 @@
 
 ### Variables
 - setVariables bugs:
-	- need to prevent modfying up_values
+	- need to prevent modifying up_values
 - global as a scope?
+
+### Stingray Commands:
+- available in a list similar to tasks? (what to do with commands with args?)
 
 ### Auto complete in console
 - use generated auto complete file
 - use _global variables
+- use binaries\editor\resources\lua_api_stingray3d.json
+- auto complete engine command if -- is used
+
+### Docs:
+- Links to official docs
 
 ### Auto complete in code
-- use generated auto complete file
+- Auto complete resource namesfrom project resources
 
 ### Goto
-- Need better introspection from Lua?
+- Need better introspection from Lua
+- Goto resource file (lua or not)
 
-### Stingray workflow
+### Stingray workflows
 - Auto compilation on lua file save
+- Right click on text selected: Evaluate selection
 
-### Command palette:
+### Commands palette:
 - Compile and refresh engine
