@@ -2,7 +2,8 @@
 
 Extension can be found at <https://marketplace.visualstudio.com/items?itemName=jschmidt42.stingray-debug>
 
-## 1.3.0 (New features and bug fixes)
+## 1.4 (New features and bug fixes)
+* Auto completion for stingray API from official stingray documentation.
 * Add launch options `compile:boolean` in order to compile project before launching it.
 * Engine commands are now evaluated with `--` prefix instead of `#`.
 * Callstack still get evaluated even if the source file cannot be found.
@@ -155,6 +156,6 @@ Also, everything you type that is **not** prefixed with `--` will be evaluated a
 
 ### Print ID strings
 
-To be available soon!
+Any engine id strings, which have the form `#ID[xxxxxxxx]` will be resolved using your compile `strings.txt` in your project data folder
 
 *Happy debugging!*

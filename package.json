@@ -1,7 +1,7 @@
 {
     "name": "stingray-debug",
     "displayName": "Stingray Debugger",
-    "version": "1.4.0",
+    "version": "1.4.2",
     "description": "Extension to debug Autodesk Stingray applications and games.",
     "license": "MIT",
     "author": {
