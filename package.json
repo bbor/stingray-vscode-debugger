@@ -58,9 +58,10 @@
         "onCommand:extension.stingray-debug.run-command",
         "onCommand:extension.stingray-debug.getProgramName",
         "onCommand:extension.stingray-debug.provideInitialConfigurations",
+        "workspaceContains:.stingray_project",
         "workspaceContains:.stingray_plugin",
         "workspaceContains:.stingray-asset-server-directory",
-        "workspaceContains:spm.rb"
+        "workspaceContains:spm-packages.sjson"
     ],
     "contributes": {
         "configuration": {

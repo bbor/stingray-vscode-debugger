@@ -23,7 +23,6 @@ const initialConfigurations = {
 };
 
 export function activate(context: vscode.ExtensionContext) {
-
     console.warn("activated!!!");
     context.subscriptions.push(vscode.commands.registerCommand('extension.stingray-debug.getProgramName', config => {
         return vscode.window.showInputBox({
