@@ -118,21 +118,76 @@ function getExpressionOfInterest(document: vscode.TextDocument, position: vscode
 function getFunctionExpression(document: vscode.TextDocument, position: vscode.Position): string {
     let line = document.lineAt(position.line);
     let lineText = line.text;
-    let startPos = position.character - 1;
+    let startPos = position.character;
+    let nbClosingParens = 0;
 
-    return lineText.substr(line.firstNonWhitespaceCharacterIndex, startPos);
+    while (startPos >= 0) {
+        if (lineText.charAt(startPos) === ')') {
+            nbClosingParens++
+        } else if (lineText.charAt(startPos) === '(') {
+            nbClosingParens--;
+            if (nbClosingParens === 0) {
+                // Position ourselves on the previous non ( character
+                --startPos;
+                break;
+            }
+        }
+        --startPos;
+    }
+
+
+    let endPos = startPos;
+    while (startPos >= 0) {
+        if (!lineText.charAt(startPos).match(identifierLegalCharacters)) {
+            startPos++
+            break;
+        }
+        --startPos;
+    }
+
+    if (endPos === startPos || startPos >= endPos || startPos < 0) {
+        return "";
+    }
+
+    return lineText.substr(startPos, endPos - startPos + 1);
 }
 
-function test() {
-    let expr = getExpression('  s', 2, true);
-    expr = getExpression('  stingray.', 10, true);
+function functionToString(name, adocSignature) {
+    let def = name + '(';
+    for (let i = 0; i < adocSignature.types.length; ++i) {
+        def += adocSignature.args[i] + ' : ' + adocSignature.types[i];
+        if (i < adocSignature.types.length-1) {
+            def += ', ';
+        }
+    }
+    def += ')';
+    if (adocSignature.rets) {
+        def += ' : ' + adocSignature.rets.join('|');
+    }
 
-    let completions = adoc.getPossibleCompletions(['stingray']);
+    return def;
+}
 
-    completions = adoc.getPossibleCompletions(['stingr']);
-    completions = adoc.getPossibleCompletions(['Achievement']);
-    completions = adoc.getPossibleCompletions(['stingray', 'Achievement']);
-    completions = adoc.getPossibleCompletions(['']);
+function adocElementToMarkedString(name, adocElement) {
+    let result = '';
+    if (adocElement.type === 'function') {
+        for (let signature of adocElement.signatures) {
+            result += functionToString(name, signature) + '\n';
+            result += '\n';
+            result += adocElement.desc;
+        }
+    } else if (adocElement.type === 'namespace' || adocElement.type === 'object') {
+        result = 'namespace: **' + name + '**';
+        if (adocElement.desc) {
+            result += '\n\n' + adocElement.desc;
+        }
+    } else {
+        let info = _.omit(adocElement.members);
+        let infoStr = JSON.stringify(info, null, 3);
+        result = '```' + infoStr + '```';
+    }
+
+    return result;
 }
 
 class LuaCompletionItemProvider implements vscode.CompletionItemProvider {
@@ -142,7 +197,6 @@ class LuaCompletionItemProvider implements vscode.CompletionItemProvider {
         token: vscode.CancellationToken):Thenable<vscode.CompletionItem[]> {
 
         let expression = getExpressionOfInterest(document, position, true);
-        console.warn('auto complete: ' + expression);
 
         // All the Stingray API use dot as separator (since it is a C API that doesn't use
         // any fake object oriented programming, we wont use ':' as a separator).
@@ -175,15 +229,13 @@ class LuaHoverProvider implements vscode.HoverProvider {
         token: vscode.CancellationToken):
         Thenable<vscode.Hover> {
 
-        console.warn(position.line)
-
         let expression = getExpressionOfInterest(document, position, false);
         let tokens = expression.split('.');
         let adocInfo = adoc.getExactMatch(tokens);
-        console.warn('hover: ' + expression);
 
         if (adocInfo) {
-            console.warn('hover found: ');
+            let infoStr = adocElementToMarkedString(expression, adocInfo);
+            return Promise.resolve(new vscode.Hover(infoStr));
         }
 
         return Promise.resolve();
@@ -195,18 +247,26 @@ class LuaSignatureProvider implements vscode.SignatureHelpProvider {
         let expression = getFunctionExpression(document, position);
         let tokens = expression.split('.');
         let adocInfo = adoc.getExactMatch(tokens);
-        console.warn('signature: ' + expression);
 
-        if(adocInfo) {
-            console.warn('signature found: ');
+        if(adocInfo && adocInfo.type === 'function') {
+            let help = new vscode.SignatureHelp();
+            help.signatures = adocInfo.signatures.map(signature => {
+                let functionLongName = functionToString(tokens[tokens.length - 1], signature);
+                let sig = new vscode.SignatureInformation(functionLongName, adocInfo.desc);
+                return sig;
+            });
+
+            if (help.signatures.length > 0) {
+                help.activeParameter = 0;
+                help.activeSignature = 0;
+            }
+
+            return Promise.resolve(help);
         }
-
-        // document.getText(lineText.charAt())
 
         return Promise.resolve();
     }
 }
-
 
 const LUA_MODE: vscode.DocumentFilter = { language: 'lua', scheme: 'file' };
 export function initialize(context: vscode.ExtensionContext) {
