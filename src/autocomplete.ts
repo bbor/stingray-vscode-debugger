@@ -78,6 +78,9 @@ class LuaCompletionItemProvider implements vscode.CompletionItemProvider {
         // All the Stingray API use dot as separator (since it is a C API that doesn't use
         // any fake object oriented programming, we wont use ':' as a separator).
         let tokens = expression.split('.');
+        if (tokens.length > 0 && tokens[0] !== 'stingray') {
+            tokens.splice(0, 0, 'stingray');
+        }
 
         let possibleCompletions = adoc.getPossibleCompletions(tokens);
         if (possibleCompletions.length > 0) {
@@ -109,7 +112,6 @@ class LuaHoverProvider implements vscode.HoverProvider {
         return Promise.resolve(new vscode.Hover('pow!'));
     }
 }
-
 
 const LUA_MODE: vscode.DocumentFilter = { language: 'lua', scheme: 'file' };
 export function initialize(context: vscode.ExtensionContext) {
