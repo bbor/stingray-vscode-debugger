@@ -24,9 +24,17 @@ class Adoc {
         return adocContent;
     }
 
-    getPossibleCompletions(tokens: string[], fuzzyNs: string = 'stingray'): Array<object> {
+    getPossibleCompletions(tokens: string[]): Array<object> {
+        let completions = this._getPossibleCompletions(tokens);
+        if (completions.length === 0 && tokens.length > 0 && tokens[0] !== 'stingray') {
+            completions = this._getPossibleCompletions(['stingray'].concat(tokens));
+        }
+        return completions;
+    }
+
+    _getPossibleCompletions(tokens: string[]): Array<object> {
         let completions = [];
-        let completeTokens = tokens.splice(0, tokens.length - 1);
+        let completeTokens = _.dropRight(tokens, 1);
         let lastToken = tokens[tokens.length - 1];
         let currentAdoc = completeTokens.length > 0 ? this._getAdoc(completeTokens) : this.content;
         if (currentAdoc && currentAdoc.members) {
