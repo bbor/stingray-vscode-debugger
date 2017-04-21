@@ -77,8 +77,9 @@ function getExpression(text: string, pos: number, fixedEndPos: boolean) : string
 
     // Start at the aucompletion position, and go back until we find a character
     // that is NOT part of the identifier chains (a word boundary, an operator symbol)
-    while (startPos > 0) {
+    while (startPos >= 0) {
         if (!text.charAt(startPos).match(identifierLegalCharacters)) {
+            startPos++
             break;
         }
         --startPos;
@@ -88,14 +89,14 @@ function getExpression(text: string, pos: number, fixedEndPos: boolean) : string
     if (!fixedEndPos) {
         while (endPos < text.length) {
             if (!text.charAt(endPos).match(identifierLegalCharacters)) {
+                --endPos;
                 break;
             }
             ++endPos;
         }
     }
 
-    startPos++
-    return text.substr(startPos, endPos - startPos);
+    return text.substr(startPos, endPos - startPos + 1);
 }
 
 function getExpressionOfInterest(document: vscode.TextDocument, position: vscode.Position, fixedPosition: boolean, startPos : number = -1) : string {
@@ -114,6 +115,18 @@ function getFunctionExpression(document: vscode.TextDocument, position: vscode.P
     return lineText.substr(line.firstNonWhitespaceCharacterIndex, startPos);
 }
 
+function test() {
+    let expr = getExpression('  s', 2, true);
+    expr = getExpression('  stingray.', 10, true);
+
+    let completions = adoc.getPossibleCompletions(['stingray']);
+
+    completions = adoc.getPossibleCompletions(['stingr']);
+    completions = adoc.getPossibleCompletions(['Achievement']);
+    completions = adoc.getPossibleCompletions(['stingray', 'Achievement']);
+    completions = adoc.getPossibleCompletions(['']);
+}
+
 class LuaCompletionItemProvider implements vscode.CompletionItemProvider {
     public provideCompletionItems(
         document: vscode.TextDocument,
@@ -122,15 +135,6 @@ class LuaCompletionItemProvider implements vscode.CompletionItemProvider {
 
         let expression = getExpressionOfInterest(document, position, true);
         console.warn('auto complete: ' + expression);
-
-
-
-        let completions = adoc.getPossibleCompletions(['stingray']);
-
-        completions = adoc.getPossibleCompletions(['stingr']);
-        completions = adoc.getPossibleCompletions(['Achievement']);
-        completions = adoc.getPossibleCompletions(['stingray', 'Achievement']);
-
 
         // All the Stingray API use dot as separator (since it is a C API that doesn't use
         // any fake object oriented programming, we wont use ':' as a separator).
@@ -195,16 +199,11 @@ class LuaSignatureProvider implements vscode.SignatureHelpProvider {
     }
 }
 
+
 const LUA_MODE: vscode.DocumentFilter = { language: 'lua', scheme: 'file' };
 export function initialize(context: vscode.ExtensionContext) {
     let apiDoc = path.join(context.extensionPath, 'res', 'lua_api_stingray3d.json');
     adoc = new Adoc(apiDoc);
-
-    let match = adoc.getExactMatch(['stingray']);
-    match = adoc.getExactMatch(['stingray', 'Achievement']);
-    match = adoc.getExactMatch(['Achievement']);
-    match = adoc.getExactMatch(['ping']);
-    match = adoc.getExactMatch(['stingray', 'ping']);
 
     context.subscriptions.push(
         vscode.languages.registerCompletionItemProvider(
