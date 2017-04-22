@@ -1,7 +1,7 @@
 {
     "name": "stingray-debug",
     "displayName": "Stingray Debugger",
-    "version": "1.4.5",
+    "version": "1.4.6",
     "description": "Extension to debug Autodesk Stingray applications and games.",
     "license": "MIT",
     "author": {
@@ -88,6 +88,9 @@
                     "sjson",
                     "sjson"
                 ],
+                "filenames": [
+                    "settings.ini"
+                ],
                 "extensions": [
                     ".sjson",
                     ".material",
@@ -96,9 +99,14 @@
                     ".shader_source",
                     ".render_config",
                     ".particles",
+                    ".particle_editor",
                     ".bsi",
                     ".texture",
+                    ".font",
                     ".unit",
+                    ".unit_anim",
+                    ".dcc_asset",
+                    ".import_options",
                     ".physics",
                     ".landscape",
                     ".level",
@@ -110,15 +118,19 @@
                     ".decals",
                     ".script_flow_nodes",
                     ".flow",
+                    ".flow_editor",
                     ".network_config",
                     ".strings",
                     ".volume_type",
                     ".package",
                     ".entity",
+                    ".component",
+                    ".type",
                     ".sound_environment",
                     ".texture_category",
                     ".stingray_project",
                     ".stingray_plugin",
+                    ".stingray_layout",
                     ".plugin",
                     ".shading_environment_template",
                     ".shading_environment"

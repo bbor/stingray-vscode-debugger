@@ -1,4 +1,5 @@
 ## 1.4
+* Add more SJSON file types.
 * Auto completion for stingray API from official stingray documentation.
 
 ## 1.3
