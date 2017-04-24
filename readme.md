@@ -63,7 +63,7 @@ If you want to debug the engine editor slave lua code, you can use the following
 
 So when the editor is started, you'll be able to attach to it through port `14030`.
 
-## Features
+## Debugging Features
 
 ### Run game and debug.
 
@@ -158,4 +158,13 @@ Also, everything you type that is **not** prefixed with `--` will be evaluated a
 
 Any engine id strings, which have the form `#ID[xxxxxxxx]` will be resolved using your compile `strings.txt` in your project data folder
 
-*Happy debugging!*
+
+## Code Editing Features
+
+### Stingray API Hovering support
+
+![hovering](images/hovering.png)
+
+### Stingray API Function signature
+
+![hovering](images/stingray_api_function_signature.png)
