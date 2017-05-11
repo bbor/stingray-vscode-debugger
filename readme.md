@@ -172,7 +172,7 @@ If any of those messages contain ID strings known to the engine (e.g. `#ID[xxxxx
 
 You can send console commands to the engine from the **Debug Console**. Prefix the commands with `--`:
 
-![engine commands](https://cloud.githubusercontent.com/assets/4054655/24309894/005f09f4-10a4-11e7-9ff4-1e051381fdbe.gif)
+![engine commands](gifs/engine commands.gif)
 
 You can also send commands from the **Command Palette**. Open the Command Palette, type `Stingray Command` and hit `Enter`. Then, enter the command you want to send (without the `--` prefix).
 
