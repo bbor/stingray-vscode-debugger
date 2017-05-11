@@ -71,7 +71,7 @@
                 "stingray.toolchain": {
                     "type": "string",
                     "default": "${env.SR_BIN_DIR}",
-                    "description": "Stingray toolchain installation folder, i.e. C:/Program Files/Autodesk/Stingray"
+                    "description": "Stingray installation folder. e.g. C:/Program Files/Autodesk/Stingray/1.8.1267.0"
                 }
             }
         },
@@ -162,8 +162,8 @@
                 },
                 "configurationSnippets": [
                     {
-                        "label": "Stingray: Application (lua)",
-                        "description": "A new configuration for debugging a Stingray application.",
+                        "label": "Stingray: Application (Lua)",
+                        "description": "A new configuration for launching and debugging a Stingray project.",
                         "body": {
                             "type": "stingray",
                             "request": "launch",
@@ -174,7 +174,7 @@
                     },
                     {
                         "label": "Stingray: Editor Engine (14030)",
-                        "description": "A new configuration for debugging a Stingray Editor Engine instance",
+                        "description": "A new configuration for debugging the Stingray editor's internal engine.",
                         "body": {
                             "type": "stingray",
                             "request": "attach",
@@ -185,7 +185,7 @@
                     },
                     {
                         "label": "Stingray: Asset Server (14032)",
-                        "description": "A new configuration for debugging the Stingray Asset Server console",
+                        "description": "A new configuration for debugging the Stingray engine running as an asset server.",
                         "body": {
                             "type": "stingray",
                             "request": "attach",
@@ -204,19 +204,19 @@
                         "properties": {
                             "toolchain": {
                                 "type": "string",
-                                "description": "Stingray binaries installation folder."
+                                "description": "Stingray installation folder. e.g. C:/Program Files/Autodesk/Stingray/1.8.1267.0"
                             },
                             "project_file": {
                                 "type": "string",
-                                "description": "Stingray project settings file path (i.e. *.stingray_project)"
+                                "description": "Path to your project's *.stingray_project* file."
                             },
                             "compile": {
                                 "type": "boolean",
-                                "description": "Will compile the project before launching it"
+                                "description": "Recompiles modified project files before launching the engine."
                             },
                             "command_line_args": {
                                 "type": "array",
-                                "description": "Additional command line arguments passed to the engine."
+                                "description": "Optional command line arguments passed to the engine."
                             }
                         }
                     },
@@ -228,13 +228,13 @@
                         "properties": {
                             "ip": {
                                 "type": "string",
-                                "description": "Stingray Application console IP",
+                                "description": "IP address of the device running the Stingray engine.",
                                 "default": "127.0.0.1"
                             },
                             "port": {
                                 "type": "number",
-                                "description": "Stingray Application console port (see settings.ini)",
-                                "default": 14031
+                                "description": "Port used by the engine for console connections.",
+                                "default": 14000
                             }
                         }
                     }
